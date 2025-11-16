@@ -54,7 +54,8 @@ serve(async (req) => {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const periodo = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
 
-    const leadsResponse = await fetch('https://api.jestor.com/api/object/list', {
+    // Jestor API requires organization name in the URL
+    const leadsResponse = await fetch('https://mateussmaia.api.jestor.com/api/object/list', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${jestorToken}`,

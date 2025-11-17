@@ -9,20 +9,25 @@ interface LogoProps {
 }
 
 export const Logo = ({ className = "h-8", alt = "Solo Ventures" }: LogoProps) => {
-  const { theme, systemTheme } = useTheme();
+  const { theme, systemTheme, resolvedTheme } = useTheme() as any;
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Render light logo initially to avoid flash
+  // Evita flash e tenta prever o tema inicial
   if (!mounted) {
-    return <img src={logoDark} alt={alt} className={className} />;
+    const prefersDark = typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return <img src={prefersDark ? logoLight : logoDark} alt={alt} className={className} />;
   }
 
-  const currentTheme = theme === "system" ? systemTheme : theme;
-  // Use light logo (white) for dark mode, dark logo for light mode
+  // Usa resolvedTheme quando disponível; fallback para classe do <html>
+  const currentTheme = (resolvedTheme ?? (theme === "system" ? systemTheme : theme))
+    ?? (typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light");
+  // Logo branca no modo escuro, logo escura no modo claro
   const logoSrc = currentTheme === "dark" ? logoLight : logoDark;
 
   return <img src={logoSrc} alt={alt} className={className} />;

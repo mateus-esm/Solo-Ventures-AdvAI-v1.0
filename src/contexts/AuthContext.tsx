@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
 
 interface Profile {
   id: string;
@@ -113,6 +112,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     await supabase.auth.signOut();
     setProfile(null);
     setEquipe(null);
+    setSession(null);
+    setUser(null);
+    // Force redirect to login
+    window.location.href = "/login";
   };
 
   return (

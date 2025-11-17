@@ -125,11 +125,10 @@ const Tutorial = () => {
               </AccordionItem>
 
               <AccordionItem value="item-5">
-                <AccordionTrigger>Como recarregar créditos?</AccordionTrigger>
+                <AccordionTrigger>Como funciona o consumo de créditos e modelos?</AccordionTrigger>
                 <AccordionContent>
                   <p className="text-sm text-muted-foreground">
-                    Para adicionar créditos extras além do seu plano mensal, acesse a página de Billing e clique no botão "Recarregar Créditos".
-                    Você será direcionado para finalizar o pagamento ou entrar em contato com o suporte.
+                    O consumo de crédito é baseado nas interações que os leads e clientes têm com o Agente e o modelo de linguagem escolhido no treinamento. Modelos de linguagem possuem valores diferentes de créditos e são selecionados com base na performance. Para entender melhor ou fazer alterações, fale com o suporte do AdvAI.
                   </p>
                 </AccordionContent>
               </AccordionItem>
@@ -140,6 +139,15 @@ const Tutorial = () => {
                   <p className="text-sm text-muted-foreground">
                     Você pode acessar a página de Suporte através do menu lateral ou clicar no botão flutuante do WhatsApp 
                     para falar diretamente com nossa equipe. Estamos disponíveis para ajudar com dúvidas técnicas e orientações.
+                  </p>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="item-7">
+                <AccordionTrigger>Qual o objetivo do AdvAI?</AccordionTrigger>
+                <AccordionContent>
+                  <p className="text-sm text-muted-foreground">
+                    O objetivo do AdvAI é aumentar a performance de equipes com um Agente que trabalha na qualificação e atendimento dos clientes, e um CRM que ajuda a aumentar os resultados de negócios fechados. Cada membro da equipe tem seu próprio login para a página de chat.
                   </p>
                 </AccordionContent>
               </AccordionItem>

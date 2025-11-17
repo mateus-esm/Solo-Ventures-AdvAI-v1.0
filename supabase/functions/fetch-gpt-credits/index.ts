@@ -29,6 +29,7 @@ serve(async (req) => {
     const { data: equipe } = await supabaseClient.from('equipes').select('gpt_maker_agent_id, workspace_id').eq('id', profile.equipe_id).single();
 
     if (!equipe?.gpt_maker_agent_id || !equipe?.workspace_id) {
+      console.error("IDs faltando na tabela equipes:", equipe); // Log para debug
       return new Response(
         JSON.stringify({ error: 'GPT Maker configuration incomplete' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
@@ -42,27 +43,48 @@ serve(async (req) => {
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
 
-    const spentRes = await fetch(`https://api.gptmaker.ai/v2/agent/${equipe.gpt_maker_agent_id}/credits-spent?year=${year}&month=${month}`, {
-      headers: { 'Authorization': `Bearer ${gptMakerToken}`, 'Content-Type': 'application/json' }
-    });
-    
-    const balanceRes = await fetch(`https://api.gptmaker.ai/v2/workspace/${equipe.workspace_id}/credits`, {
-      headers: { 'Authorization': `Bearer ${gptMakerToken}`, 'Content-Type': 'application/json' }
-    });
+    // URLs confirmadas como V2
+    const spentUrl = `https://api.gptmaker.ai/v2/agent/${equipe.gpt_maker_agent_id}/credits-spent?year=${year}&month=${month}`;
+    const balanceUrl = `https://api.gptmaker.ai/v2/workspace/${equipe.workspace_id}/credits`;
 
-    if (!spentRes.ok || !balanceRes.ok) throw new Error('GPT Maker API error');
+    const [spentRes, balanceRes] = await Promise.all([
+      fetch(spentUrl, { headers: { 'Authorization': `Bearer ${gptMakerToken}`, 'Content-Type': 'application/json' } }),
+      fetch(balanceUrl, { headers: { 'Authorization': `Bearer ${gptMakerToken}`, 'Content-Type': 'application/json' } })
+    ]);
+
+    if (!spentRes.ok) {
+        const err = await spentRes.text();
+        console.error("Erro API Agent Spent:", err);
+        throw new Error(`GPT Maker Agent API error: ${spentRes.status}`);
+    }
+    if (!balanceRes.ok) {
+        const err = await balanceRes.text();
+        console.error("Erro API Workspace Credits:", err);
+        throw new Error(`GPT Maker Workspace API error: ${balanceRes.status}`);
+    }
 
     const spentData = await spentRes.json();
     const balanceData = await balanceRes.json();
+
+    // LOGS IMPORTANTES: Veja isso no painel do Supabase se der erro
+    console.log("Resposta API Spent:", spentData);
+    console.log("Resposta API Balance:", balanceData);
+
+    // CORREÇÃO AQUI: balanceData.credits em vez de balanceData.balance
+    // E fallback para spentData.credits se total_credits_spent não existir
+    const creditsSpent = spentData.total_credits_spent || spentData.credits || 0;
+    const creditsBalance = balanceData.credits || balanceData.balance || 0;
+
     const periodo = `${year}-${month.toString().padStart(2, '0')}`;
-    const creditsSpent = spentData.total_credits_spent || 0;
 
     await supabaseClient.from('consumo_creditos').upsert({
       equipe_id: profile.equipe_id, creditos_utilizados: creditsSpent, periodo, metadata: spentData
     }, { onConflict: 'equipe_id,periodo', ignoreDuplicates: false });
 
     return new Response(JSON.stringify({
-      creditsSpent, creditsBalance: balanceData.balance || 0, periodo
+      creditsSpent, 
+      creditsBalance, 
+      periodo
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {

@@ -10,33 +10,31 @@ const Home = () => {
 
   return (
     <div className="flex-1 flex flex-col bg-background">
-      <div className="border-b border-border bg-gradient-to-r from-background to-soft-gray">
+      <div className="border-b border-border bg-header-bg">
         <div className="container mx-auto px-4 py-6">
           <h1 className="text-3xl font-bold text-foreground text-center">
             AdvAI <span className="text-primary">— {equipe?.nome_cliente || 'Assistente'}</span>
           </h1>
-          <p className="text-sm text-muted-foreground mt-2 text-center">
+          <p className="text-sm text-foreground/70 mt-2 text-center font-medium">
             {profile?.nome_completo} • Powered by Solo Ventures ⚡
           </p>
         </div>
       </div>
 
         {/* Explicação Dinâmica */}
-        {equipe?.home_explanation && (
-          <div className="border-b border-border bg-gradient-to-r from-soft-gray to-background">
-            <div className="container mx-auto px-4 py-6">
-              <Card className="border-primary/20">
-                <CardContent className="p-6">
-                  <p className="text-center text-muted-foreground leading-relaxed">
-                    {equipe.home_explanation}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
+        <div className="border-b border-border bg-background">
+          <div className="container mx-auto px-4 py-6">
+            <Card className="border-primary/20 bg-card">
+              <CardContent className="p-6">
+                <p className="text-center text-foreground/80 leading-relaxed font-medium">
+                  {equipe?.home_explanation || "O AdvAI é a inteligência proprietária da Solo Ventures projetada para escalar sua operação jurídica. Monitore os atendimentos do agente, gerencie seu pipeline e potencialize seus resultados com nossa tecnologia."}
+                </p>
+              </CardContent>
+            </Card>
           </div>
-        )}
+        </div>
 
-        <div className="flex-1 flex items-center justify-center p-4 bg-soft-gray">
+        <div className="flex-1 flex items-center justify-center p-4 bg-background">
           <div className="w-full max-w-4xl">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Chat Button */}
@@ -52,9 +50,9 @@ const Home = () => {
                       <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-[hsl(45_100%_60%)] flex items-center justify-center mb-4">
                         <MessageCircle className="h-8 w-8 text-primary-foreground" />
                       </div>
-                      <h2 className="text-2xl font-bold text-foreground mb-2">Chat</h2>
+                      <h2 className="text-2xl font-bold text-foreground mb-2">Central de Atendimento</h2>
                       <p className="text-sm text-muted-foreground">
-                        Converse com o assistente jurídico inteligente
+                        Acompanhe a performance do AdvAI em tempo real e gerencie interações
                       </p>
                     </CardContent>
                   </Card>
@@ -66,9 +64,9 @@ const Home = () => {
                       <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-[hsl(45_100%_60%)] flex items-center justify-center mb-4">
                         <MessageCircle className="h-8 w-8 text-primary-foreground" />
                       </div>
-                      <h2 className="text-2xl font-bold text-foreground mb-2">Chat</h2>
+                      <h2 className="text-2xl font-bold text-foreground mb-2">Central de Atendimento</h2>
                       <p className="text-sm text-muted-foreground">
-                        Converse com o assistente jurídico inteligente
+                        Acompanhe a performance do AdvAI em tempo real e gerencie interações
                       </p>
                     </CardContent>
                   </Card>
@@ -82,9 +80,9 @@ const Home = () => {
                     <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-[hsl(45_100%_60%)] flex items-center justify-center mb-4">
                       <LayoutDashboard className="h-8 w-8 text-primary-foreground" />
                     </div>
-                    <h2 className="text-2xl font-bold text-foreground mb-2">CRM</h2>
+                    <h2 className="text-2xl font-bold text-foreground mb-2">Pipeline Comercial</h2>
                     <p className="text-sm text-muted-foreground">
-                      Gestão de projetos e clientes
+                      Gestão estratégica do funil de vendas
                     </p>
                   </CardContent>
                 </Card>
@@ -97,9 +95,9 @@ const Home = () => {
                     <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-[hsl(45_100%_60%)] flex items-center justify-center mb-4">
                       <Headphones className="h-8 w-8 text-primary-foreground" />
                     </div>
-                    <h2 className="text-2xl font-bold text-foreground mb-2">Suporte</h2>
+                    <h2 className="text-2xl font-bold text-foreground mb-2">Expert Support</h2>
                     <p className="text-sm text-muted-foreground">
-                      Envie feedback e tire dúvidas
+                      Suporte técnico e estratégico dedicado
                     </p>
                   </CardContent>
                 </Card>

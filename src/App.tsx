@@ -34,9 +34,9 @@ const AuthenticatedLayout = ({ children }: { children: React.ReactNode }) => (
         <main className="flex-1 flex flex-col overflow-hidden">
           {children}
         </main>
-        <footer className="border-t border-border bg-background shrink-0">
-          <div className="container mx-auto px-4 py-3 text-center text-sm text-muted-foreground">
-            © 2025 Solo Ventures — Powering Intelligent Operations ⚡
+        <footer className="border-t border-border bg-header-bg shrink-0">
+          <div className="container mx-auto px-4 py-3 text-center text-sm text-foreground/70 font-medium">
+            © 2025 Solo Ventures. Todos os direitos reservados. | AdvAI é uma plataforma proprietária.
           </div>
         </footer>
       </div>

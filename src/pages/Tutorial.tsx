@@ -5,13 +5,13 @@ import { BookOpen, MessageSquare, BarChart3, CreditCard, Users, Zap } from "luci
 const Tutorial = () => {
   return (
     <div className="flex-1 flex flex-col">
-      <div className="border-b border-border bg-gradient-to-r from-background to-soft-gray">
+      <div className="border-b border-border bg-header-bg">
         <div className="container mx-auto px-4 py-4">
           <h1 className="text-2xl font-bold text-foreground">
             Tutorial <span className="text-primary">& Guia de Uso</span>
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Aprenda a usar todas as funcionalidades do Portal AdvAI
+          <p className="text-sm text-foreground/70 mt-1 font-medium">
+            Aprenda a dominar todas as funcionalidades do AdvAI Portal
           </p>
         </div>
       </div>
@@ -22,12 +22,12 @@ const Tutorial = () => {
           <Card>
             <CardHeader>
               <MessageSquare className="h-8 w-8 text-primary mb-2" />
-              <CardTitle className="text-lg">Chat com AdvAI</CardTitle>
-              <CardDescription>Converse com seu agente inteligente</CardDescription>
+              <CardTitle className="text-lg">Central de Atendimento</CardTitle>
+              <CardDescription>Gerencie interações com AdvAI</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                Acesse o chat para interagir com o AdvAI, fazer consultas jurídicas e receber orientações automatizadas.
+                Acesse a Central de Comando para supervisionar o AdvAI e colaborar com sua equipe.
               </p>
             </CardContent>
           </Card>
@@ -48,12 +48,12 @@ const Tutorial = () => {
           <Card>
             <CardHeader>
               <CreditCard className="h-8 w-8 text-primary mb-2" />
-              <CardTitle className="text-lg">Billing</CardTitle>
-              <CardDescription>Gerencie seus créditos</CardDescription>
+              <CardTitle className="text-lg">Créditos & Billing</CardTitle>
+              <CardDescription>Gerencie seus créditos AdvAI</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                Acompanhe o consumo de créditos GPT, saldo disponível e histórico de uso do seu plano.
+                Acompanhe o consumo de créditos AdvAI, saldo disponível e histórico de uso do seu plano.
               </p>
             </CardContent>
           </Card>
@@ -72,8 +72,8 @@ const Tutorial = () => {
               <AccordionItem value="item-1">
                 <AccordionTrigger>Como funciona o Chat e o Multi-atendimento?</AccordionTrigger>
                 <AccordionContent>
-                  <p className="text-sm text-muted-foreground">
-                    Acesse o chat para acompanhar os atendimentos do agente em tempo real. Você pode intervir, entrar na conversa, parar o atendimento, assumir ou transferir. O chat também funciona como um canal de multi-atendimento onde os membros da equipe podem interagir com o Agente.
+                  <p className="text-sm text-foreground/80 leading-relaxed">
+                    Acesse a <strong>Central de Comando</strong> para supervisionar o AdvAI. Você tem total controle para intervir, assumir conversas ou analisar a qualidade do atendimento em tempo real. Uma ferramenta de colaboração onde humanos e IA trabalham em sintonia para maximizar resultados.
                   </p>
                 </AccordionContent>
               </AccordionItem>
@@ -106,19 +106,37 @@ const Tutorial = () => {
               <AccordionItem value="item-4">
                 <AccordionTrigger>Quais são os planos disponíveis?</AccordionTrigger>
                 <AccordionContent>
-                  <div className="space-y-3 text-sm text-muted-foreground">
+                  <div className="space-y-4 text-sm text-foreground/80">
                     <div>
-                      <p className="font-semibold text-foreground">Solo Starter - R$ 99,90/mês</p>
-                      <p>1.000 créditos • 1 usuário • Setup + Chat + CRM</p>
+                      <p className="font-semibold text-foreground mb-1">Solo Starter - R$ 150/mês</p>
+                      <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                        <li>1.000 Créditos AdvAI • Até 3 Usuários</li>
+                        <li>Setup do Agente, Central de Atendimento, Pipeline (Visualização)</li>
+                        <li>Ideal para: Começar a automatizar operações</li>
+                      </ul>
                     </div>
+                    
                     <div>
-                      <p className="font-semibold text-foreground">Pro - R$ 299,00/mês</p>
-                      <p>5.000 créditos • 5 usuários • Starter + Dashboard + Billing + Suporte</p>
+                      <p className="font-semibold text-primary mb-1">Solo Scale - R$ 400/mês (Mais Popular)</p>
+                      <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                        <li>3.000 Créditos AdvAI • Até 5 Usuários</li>
+                        <li>Dashboard Avançado, Gestão de Billing, Builder Mode (1h/mês)</li>
+                        <li>Ideal para: Escritórios em expansão que precisam de dados</li>
+                      </ul>
                     </div>
+                    
                     <div>
-                      <p className="font-semibold text-foreground">Scale - R$ 999,00/mês</p>
-                      <p>20.000 créditos • Ilimitado • Pro + Consultoria de Desenvolvimento</p>
+                      <p className="font-semibold text-foreground mb-1">Solo Pro - R$ 1.000/mês</p>
+                      <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                        <li>10.000 Créditos AdvAI • Usuários Ilimitados</li>
+                        <li>Consultoria, Builder Mode Prioritário (3h/mês), Customizações</li>
+                        <li>Ideal para: Operações robustas com demandas complexas</li>
+                      </ul>
                     </div>
+                    
+                    <p className="mt-4 text-muted-foreground italic">
+                      Todos os planos incluem atualizações contínuas e suporte da Solo Ventures.
+                    </p>
                   </div>
                 </AccordionContent>
               </AccordionItem>
@@ -127,7 +145,7 @@ const Tutorial = () => {
                 <AccordionTrigger>Como funciona o consumo de créditos e modelos?</AccordionTrigger>
                 <AccordionContent>
                   <p className="text-sm text-muted-foreground">
-                    O consumo de crédito é baseado nas interações que os leads e clientes têm com o Agente e o modelo de linguagem escolhido no treinamento. Modelos de linguagem possuem valores diferentes de créditos e são selecionados com base na performance. Para entender melhor ou fazer alterações, fale com o suporte do AdvAI.
+                    O consumo de crédito AdvAI é baseado nas interações que os leads e clientes têm com o Agente e o modelo de linguagem escolhido no treinamento. Modelos de linguagem possuem valores diferentes de créditos e são selecionados com base na performance. Para entender melhor ou fazer alterações, fale com o suporte do AdvAI.
                   </p>
                 </AccordionContent>
               </AccordionItem>

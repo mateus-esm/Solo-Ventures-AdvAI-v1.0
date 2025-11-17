@@ -22,6 +22,7 @@ export default {
         "solar-orange": "hsl(var(--solar-orange))",
         "deep-black": "hsl(var(--deep-black))",
         "soft-gray": "hsl(var(--soft-gray))",
+        "header-bg": "hsl(var(--header-bg))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",

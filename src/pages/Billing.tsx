@@ -8,7 +8,7 @@ import { Slider } from "@/components/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Zap, TrendingUp, Loader2, RefreshCcw, ExternalLink, MessageCircle, CreditCard, QrCode, Copy } from "lucide-react";
+import { Zap, TrendingUp, Loader2, RefreshCcw, ExternalLink, MessageCircle, CreditCard, QrCode, Copy, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface CreditData {
@@ -188,13 +188,13 @@ const Billing = () => {
 
   return (
     <div className="flex-1 flex flex-col">
-      <div className="border-b border-border bg-gradient-to-r from-background to-soft-gray">
+      <div className="border-b border-border bg-header-bg">
         <div className="container mx-auto px-4 py-4">
           <h1 className="text-2xl font-bold text-foreground">
             Billing <span className="text-primary">&amp; Créditos</span>
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Gestão de consumo de créditos do AdvAI • {creditData?.periodo}
+          <p className="text-sm text-foreground/70 mt-1 font-medium">
+            Gerencie seu consumo e plano AdvAI
           </p>
         </div>
       </div>
@@ -328,13 +328,15 @@ const Billing = () => {
         {/* Credit Recharge with Asaas */}
         <Card>
           <CardHeader>
-            <CardTitle>Recarga de Créditos</CardTitle>
-            <CardDescription>Compre créditos avulsos com Pix ou Cartão</CardDescription>
+            <CardTitle>Recarga de Créditos AdvAI</CardTitle>
+            <CardDescription>
+              Adicione créditos para continuar utilizando a plataforma sem interrupções
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Quantidade de Créditos</label>
+                <label className="text-sm font-medium">Quantidade de Créditos AdvAI</label>
                 <span className="text-2xl font-bold text-primary">{selectedCredits.toLocaleString()}</span>
               </div>
               <Slider
@@ -424,35 +426,58 @@ const Billing = () => {
         {/* Available Plans Section */}
         <div className="space-y-4">
           <div>
-            <h2 className="text-xl font-bold text-foreground mb-1">Planos Disponíveis</h2>
-            <p className="text-sm text-muted-foreground">Faça upgrade e tenha acesso a mais recursos</p>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Planos AdvAI</h2>
+            <p className="text-sm text-muted-foreground">
+              Escolha o plano ideal para escalar sua operação jurídica
+            </p>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Starter Plan */}
-            <Card className="relative">
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Solo Starter */}
+            <Card className="relative border-border hover:border-primary/50 transition-all duration-300">
               <CardHeader>
-                <CardTitle className="text-lg">Solo Starter</CardTitle>
-                <div className="mt-2">
-                  <span className="text-3xl font-bold">R$ 150</span>
-                  <span className="text-muted-foreground">/mês</span>
-                </div>
+                <CardTitle className="text-xl">Solo Starter</CardTitle>
+                <CardDescription className="text-muted-foreground">
+                  Para quem está começando a automatizar
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Badge variant="secondary">1.000 créditos</Badge>
+                <div>
+                  <p className="text-4xl font-bold text-foreground">
+                    R$ 150<span className="text-lg font-normal text-muted-foreground">/mês</span>
+                  </p>
+                </div>
+                
+                <div className="space-y-2 py-4 border-t border-b">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">1.000 Créditos AdvAI</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Badge variant="secondary">3 usuários</Badge>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">Até 3 Usuários</span>
                   </div>
                 </div>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li>✓ Setup do Agente</li>
-                  <li>✓ Acesso ao Chat</li>
-                  <li>✓ Acesso ao CRM (Read-Only)</li>
-                  <li>✓ Suporte para ajustes (limitado)</li>
+
+                <ul className="space-y-2">
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Setup completo do Agente AdvAI</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Acesso à Central de Atendimento</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Pipeline Comercial (Visualização)</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Suporte via WhatsApp</span>
+                  </li>
                 </ul>
+
                 <Button 
                   variant="outline" 
                   className="w-full"
@@ -465,41 +490,69 @@ const Billing = () => {
                       Processando...
                     </>
                   ) : (
-                    "Fazer Upgrade"
+                    "Escolher Starter"
                   )}
                 </Button>
               </CardContent>
             </Card>
 
-            {/* Scale Plan */}
-            <Card className="relative border-primary shadow-lg">
-              <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold rounded-bl-lg rounded-tr-lg">
-                Popular
+            {/* Solo Scale - DESTAQUE */}
+            <Card className="relative border-2 border-primary shadow-[var(--shadow-elegant)] transform scale-105">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                <Badge className="bg-gradient-to-r from-primary to-[hsl(45_100%_60%)] text-primary-foreground px-4 py-1 font-bold">
+                  Mais Popular
+                </Badge>
               </div>
-              <CardHeader>
-                <CardTitle className="text-lg">Solo Scale</CardTitle>
-                <div className="mt-2">
-                  <span className="text-3xl font-bold">R$ 400</span>
-                  <span className="text-muted-foreground">/mês</span>
-                </div>
+              
+              <CardHeader className="pt-8">
+                <CardTitle className="text-xl">Solo Scale</CardTitle>
+                <CardDescription className="text-muted-foreground">
+                  Escritórios em expansão que precisam de dados
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Badge variant="secondary">3.000 créditos</Badge>
+                <div>
+                  <p className="text-4xl font-bold text-foreground">
+                    R$ 400<span className="text-lg font-normal text-muted-foreground">/mês</span>
+                  </p>
+                </div>
+                
+                <div className="space-y-2 py-4 border-t border-b">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">3.000 Créditos AdvAI</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Badge variant="secondary">5 usuários</Badge>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">Até 5 Usuários</span>
                   </div>
                 </div>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li>✓ Tudo do Starter</li>
-                  <li>✓ Dashboard de Performance</li>
-                  <li>✓ Billing</li>
-                  <li>✓ Suporte Builder Mode (1h mensal)</li>
+
+                <ul className="space-y-2">
+                  <li className="text-sm text-foreground/80 flex items-start gap-2 font-medium">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Tudo do Starter +</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Dashboard de Performance Avançado</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Gestão de Billing Completa</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Suporte Builder Mode (1h/mês)</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Prioridade no suporte</span>
+                  </li>
                 </ul>
+
                 <Button 
-                  className="w-full"
+                  className="w-full bg-gradient-to-r from-primary to-[hsl(45_100%_60%)] hover:opacity-90 transition-opacity"
                   onClick={() => handleUpgradePlan(2)}
                   disabled={processing}
                 >
@@ -509,38 +562,64 @@ const Billing = () => {
                       Processando...
                     </>
                   ) : (
-                    "Fazer Upgrade"
+                    "Escolher Scale"
                   )}
                 </Button>
               </CardContent>
             </Card>
 
-            {/* Pro Plan */}
-            <Card className="relative">
+            {/* Solo Pro */}
+            <Card className="relative border-border hover:border-primary/50 transition-all duration-300">
               <CardHeader>
-                <CardTitle className="text-lg">Solo Pro</CardTitle>
-                <div className="mt-2">
-                  <span className="text-3xl font-bold">R$ 1.000</span>
-                  <span className="text-muted-foreground">/mês</span>
-                </div>
+                <CardTitle className="text-xl">Solo Pro</CardTitle>
+                <CardDescription className="text-muted-foreground">
+                  Operações robustas que demandam personalização
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Badge variant="secondary">10.000 créditos</Badge>
+                <div>
+                  <p className="text-4xl font-bold text-foreground">
+                    R$ 1.000<span className="text-lg font-normal text-muted-foreground">/mês</span>
+                  </p>
+                </div>
+                
+                <div className="space-y-2 py-4 border-t border-b">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">10.000 Créditos AdvAI</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Badge variant="secondary">Usuários Ilimitados</Badge>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">Usuários Ilimitados</span>
                   </div>
                 </div>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li>✓ Tudo do Scale</li>
-                  <li>✓ Usuários Ilimitados</li>
-                  <li>✓ Suporte Builder Mode (3h mensal)</li>
+
+                <ul className="space-y-2">
+                  <li className="text-sm text-foreground/80 flex items-start gap-2 font-medium">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Tudo do Scale +</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Consultoria de Desenvolvimento</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Suporte Builder Mode Prioritário (3h/mês)</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>Customizações avançadas</span>
+                  </li>
+                  <li className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>SLA dedicado</span>
+                  </li>
                 </ul>
+
                 <Button 
-                  variant="outline"
-                  className="w-full"
+                  variant="outline" 
+                  className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground"
                   onClick={() => handleUpgradePlan(3)}
                   disabled={processing}
                 >
@@ -550,7 +629,7 @@ const Billing = () => {
                       Processando...
                     </>
                   ) : (
-                    "Fazer Upgrade"
+                    "Escolher Pro"
                   )}
                 </Button>
               </CardContent>

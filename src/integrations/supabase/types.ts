@@ -55,6 +55,7 @@ export type Database = {
       equipes: {
         Row: {
           created_at: string
+          creditos_avulsos: number
           crm_link: string
           gpt_maker_agent_id: string | null
           home_explanation: string | null
@@ -69,6 +70,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          creditos_avulsos?: number
           crm_link: string
           gpt_maker_agent_id?: string | null
           home_explanation?: string | null
@@ -83,6 +85,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          creditos_avulsos?: number
           crm_link?: string
           gpt_maker_agent_id?: string | null
           home_explanation?: string | null

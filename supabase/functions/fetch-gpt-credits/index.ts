@@ -26,10 +26,10 @@ serve(async (req) => {
     const { data: profile } = await supabaseClient.from('profiles').select('equipe_id').eq('user_id', user.id).single();
     if (!profile) throw new Error('Profile not found');
 
-    // Busca o ID do agente e o LIMITE DO PLANO (se não tiver, assume 1000)
+    // Busca o ID do agente, limite do plano E créditos avulsos
     const { data: equipe } = await supabaseClient
       .from('equipes')
-      .select('gpt_maker_agent_id, limite_creditos')
+      .select('gpt_maker_agent_id, limite_creditos, creditos_avulsos')
       .eq('id', profile.equipe_id)
       .single();
 
@@ -65,15 +65,17 @@ serve(async (req) => {
     // LOG PARA CONFERÊNCIA
     console.log("JSON Retornado pelo GPT Maker:", spentData);
 
-    // --- CORREÇÃO PRINCIPAL AQUI ---
-    // Lê o campo "total" do JSON que você mostrou
+    // --- LÓGICA DE SALDO COM CRÉDITOS AVULSOS ---
+    // Lê o campo "total" do JSON
     const creditsSpent = spentData.total || 0; 
     
     // Pega o limite do banco (ou usa 1000 como padrão)
     const planLimit = equipe.limite_creditos || 1000;
+    const extraCredits = equipe.creditos_avulsos || 0;
+    const totalCredits = planLimit + extraCredits;
 
     // Calcula o saldo do cliente localmente
-    const creditsBalance = planLimit - creditsSpent;
+    const creditsBalance = totalCredits - creditsSpent;
 
     const periodo = `${year}-${month.toString().padStart(2, '0')}`;
 
@@ -86,8 +88,9 @@ serve(async (req) => {
     }, { onConflict: 'equipe_id,periodo', ignoreDuplicates: false });
 
     return new Response(JSON.stringify({
-      creditsSpent: creditsSpent,    // Agora vai mostrar o valor correto (ex: 4228)
-      creditsBalance: creditsBalance, // Saldo calculado (Limite - Gasto)
+      creditsSpent: creditsSpent,
+      creditsBalance: creditsBalance,
+      totalCredits: totalCredits,
       periodo
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 

@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 interface CreditData {
   creditsSpent: number;
   creditsBalance: number;
+  totalCredits?: number;
   periodo: string;
 }
 
@@ -90,7 +91,7 @@ const Billing = () => {
     );
   }
 
-  const totalCredits = (creditData?.creditsBalance || 0) + (creditData?.creditsSpent || 0);
+  const totalCredits = creditData?.totalCredits || plano?.limite_creditos || 1000;
   const usagePercentage = totalCredits > 0 ? ((creditData?.creditsSpent || 0) / totalCredits) * 100 : 0;
 
   return (
@@ -292,6 +293,128 @@ const Billing = () => {
             </p>
           </CardContent>
         </Card>
+
+        {/* Available Plans Section */}
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-xl font-bold text-foreground mb-1">Planos Disponíveis</h2>
+            <p className="text-sm text-muted-foreground">Faça upgrade e tenha acesso a mais recursos</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Starter Plan */}
+            <Card className="relative">
+              <CardHeader>
+                <CardTitle className="text-lg">Solo Starter</CardTitle>
+                <div className="mt-2">
+                  <span className="text-3xl font-bold">R$ 150</span>
+                  <span className="text-muted-foreground">/mês</span>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Badge variant="secondary">1.000 créditos</Badge>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Badge variant="secondary">3 usuários</Badge>
+                  </div>
+                </div>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li>✓ Setup do Agente</li>
+                  <li>✓ Acesso ao Chat</li>
+                  <li>✓ Acesso ao CRM (Read-Only)</li>
+                  <li>✓ Suporte para ajustes (limitado)</li>
+                </ul>
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => {
+                    const message = "Olá! Gostaria de fazer upgrade para o plano Solo Starter (R$ 150/mês)";
+                    window.open(`https://wa.me/5511999999999?text=${encodeURIComponent(message)}`, '_blank');
+                  }}
+                >
+                  Fazer Upgrade
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Scale Plan */}
+            <Card className="relative border-primary shadow-lg">
+              <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold rounded-bl-lg rounded-tr-lg">
+                Popular
+              </div>
+              <CardHeader>
+                <CardTitle className="text-lg">Solo Scale</CardTitle>
+                <div className="mt-2">
+                  <span className="text-3xl font-bold">R$ 400</span>
+                  <span className="text-muted-foreground">/mês</span>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Badge variant="secondary">3.000 créditos</Badge>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Badge variant="secondary">5 usuários</Badge>
+                  </div>
+                </div>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li>✓ Tudo do Starter</li>
+                  <li>✓ Dashboard de Performance</li>
+                  <li>✓ Billing</li>
+                  <li>✓ Suporte Builder Mode (1h mensal)</li>
+                </ul>
+                <Button 
+                  className="w-full"
+                  onClick={() => {
+                    const message = "Olá! Gostaria de fazer upgrade para o plano Solo Scale (R$ 400/mês)";
+                    window.open(`https://wa.me/5511999999999?text=${encodeURIComponent(message)}`, '_blank');
+                  }}
+                >
+                  Fazer Upgrade
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Pro Plan */}
+            <Card className="relative">
+              <CardHeader>
+                <CardTitle className="text-lg">Solo Pro</CardTitle>
+                <div className="mt-2">
+                  <span className="text-3xl font-bold">R$ 1.000</span>
+                  <span className="text-muted-foreground">/mês</span>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Badge variant="secondary">10.000 créditos</Badge>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Badge variant="secondary">Usuários Ilimitados</Badge>
+                  </div>
+                </div>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li>✓ Tudo do Scale</li>
+                  <li>✓ Usuários Ilimitados</li>
+                  <li>✓ Suporte Builder Mode (3h mensal)</li>
+                </ul>
+                <Button 
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    const message = "Olá! Gostaria de fazer upgrade para o plano Solo Pro (R$ 1.000/mês)";
+                    window.open(`https://wa.me/5511999999999?text=${encodeURIComponent(message)}`, '_blank');
+                  }}
+                >
+                  Fazer Upgrade
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
         {/* Warning for low credits */}
         {usagePercentage > 80 && (

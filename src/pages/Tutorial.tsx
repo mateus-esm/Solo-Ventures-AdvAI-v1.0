@@ -95,11 +95,10 @@ const Tutorial = () => {
               </AccordionItem>
 
               <AccordionItem value="item-3">
-                <AccordionTrigger>Como funciona o acesso ao CRM?</AccordionTrigger>
+                <AccordionTrigger>Como usar o CRM integrado?</AccordionTrigger>
                 <AccordionContent>
                   <p className="text-sm text-muted-foreground">
-                    O CRM integrado permite visualizar seus leads e oportunidades. Para interação completa (mover cards, editar status),
-                    você será redirecionado para o Jestor. Note que o acesso interativo consome um assento do Jestor.
+                    Cada equipe possui um login para utilizar o CRM interativo, podendo mover os cards de fase, adicionar interações com os clientes, anexar documentos e muito mais.
                   </p>
                 </AccordionContent>
               </AccordionItem>

@@ -108,7 +108,7 @@ const Tutorial = () => {
                 <AccordionContent>
                   <div className="space-y-4 text-sm text-foreground/80">
                     <div>
-                      <p className="font-semibold text-foreground mb-1">Solo Starter - R$ 150/mês</p>
+                      <p className="font-semibold text-foreground mb-1">Solo Starter - R$ 200/mês</p>
                       <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
                         <li>1.000 Créditos AdvAI • Até 3 Usuários</li>
                         <li>Setup do Agente, Central de Atendimento, Pipeline (Visualização)</li>

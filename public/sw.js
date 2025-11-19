@@ -1,5 +1,5 @@
 // Service Worker for AdvAI Portal PWA
-const CACHE_NAME = 'advai-portal-v7';
+const CACHE_NAME = 'advai-portal-v9';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -7,6 +7,14 @@ const urlsToCache = [
   '/solo-ventures-icon-192.png',
   '/solo-ventures-icon-512.png',
 ];
+
+// URLs que NÃO devem ser cacheadas (módulos Vite)
+const shouldNotCache = (url) => {
+  return url.includes('/node_modules/.vite/') || 
+         url.includes('/@vite/') ||
+         url.includes('/@react-refresh') ||
+         url.includes('/__vite_ping');
+};
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
@@ -35,6 +43,12 @@ self.addEventListener('install', (event) => {
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
+  // NEVER cache Vite dev modules
+  if (shouldNotCache(event.request.url)) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
@@ -46,6 +60,12 @@ self.addEventListener('fetch', (event) => {
           if (!response || response.status !== 200 || response.type === 'error') {
             return response;
           }
+          
+          // Don't cache Vite modules
+          if (shouldNotCache(event.request.url)) {
+            return response;
+          }
+          
           // Clone the response
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {

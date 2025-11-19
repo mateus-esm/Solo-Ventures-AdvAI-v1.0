@@ -11,3 +11,9 @@ verify_jwt = true
 
 [functions.asaas-buy-credits]
 verify_jwt = true
+
+[functions.monthly-credit-reset]
+verify_jwt = false
+
+[functions.check-low-credits]
+verify_jwt = false

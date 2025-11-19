@@ -139,7 +139,7 @@ serve(async (req) => {
     // Create payment in Asaas
     console.log('[Asaas Buy Credits] Creating payment...');
     
-    const billingType = paymentMethod === 'PIX' ? 'PIX' : 'UNDEFINED';
+    const billingType = paymentMethod === 'PIX' ? 'PIX' : 'CREDIT_CARD';
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 1); // Tomorrow
 

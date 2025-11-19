@@ -107,6 +107,17 @@ const Billing = () => {
           copyPaste: data.pixCopyPaste,
         });
         setPixDialogOpen(true);
+        toast({
+          title: "PIX gerado com sucesso!",
+          description: "Escaneie o QR Code ou copie o código Copia e Cola para pagar.",
+        });
+      } else if (paymentMethod === "CREDIT_CARD" && data.invoiceUrl) {
+        // Open credit card checkout in new tab
+        window.open(data.invoiceUrl, '_blank');
+        toast({
+          title: "Redirecionando para pagamento",
+          description: "Complete o pagamento no cartão de crédito na nova aba.",
+        });
       } else if (data.invoiceUrl) {
         window.location.href = data.invoiceUrl;
       }

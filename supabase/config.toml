@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.check-low-credits]
 verify_jwt = false
+
+[functions.admin-adjust-credits]
+verify_jwt = true

@@ -17,6 +17,7 @@ import Suporte from "./pages/Suporte";
 import Dashboard from "./pages/Dashboard";
 import Billing from "./pages/Billing";
 import Tutorial from "./pages/Tutorial";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 import { WhatsAppButton } from "./components/WhatsAppButton";
 
@@ -122,6 +123,16 @@ const App = () => (
                 <ProtectedRoute>
                   <AuthenticatedLayout>
                     <Tutorial />
+                  </AuthenticatedLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AuthenticatedLayout>
+                    <Admin />
                   </AuthenticatedLayout>
                 </ProtectedRoute>
               }

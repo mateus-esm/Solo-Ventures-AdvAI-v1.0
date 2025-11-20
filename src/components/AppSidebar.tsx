@@ -1,6 +1,7 @@
-import { Home, MessageCircle, LayoutDashboard, HelpCircle, LogOut, ExternalLink, CreditCard, BarChart3, BookOpen } from "lucide-react";
+import { Home, MessageCircle, LayoutDashboard, HelpCircle, LogOut, ExternalLink, CreditCard, BarChart3, BookOpen, Shield } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 // 👇 CHANGE 1: Import the Logo component instead of the image file
 import { Logo } from "@/components/Logo";
 import icon from "@/assets/solo-ventures-icon.png";
@@ -9,18 +10,22 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGrou
 export function AppSidebar() {
   const { open } = useSidebar();
   const { signOut, profile } = useAuth();
+  const { isAdmin } = useIsAdmin();
   const chatHref = profile?.chat_link_base || "/chat";
   const isExternalChatLink = chatHref.startsWith("http");
 
   const menuItems = [
-    { title: "Início", url: "/home", icon: Home, external: false },
-    { title: "Dashboard", url: "/dashboard", icon: BarChart3, external: false },
-    { title: "Chat AdvAI", url: isExternalChatLink ? chatHref : chatHref || "/chat", icon: MessageCircle, external: isExternalChatLink },
-    { title: "CRM", url: "/crm", icon: LayoutDashboard, external: false },
-    { title: "Billing", url: "/billing", icon: CreditCard, external: false },
-    { title: "Suporte", url: "/suporte", icon: HelpCircle, external: false },
-    { title: "Tutorial", url: "/tutorial", icon: BookOpen, external: false },
+    { title: "Início", url: "/home", icon: Home, external: false, adminOnly: false },
+    { title: "Dashboard", url: "/dashboard", icon: BarChart3, external: false, adminOnly: false },
+    { title: "Chat AdvAI", url: isExternalChatLink ? chatHref : chatHref || "/chat", icon: MessageCircle, external: isExternalChatLink, adminOnly: false },
+    { title: "CRM", url: "/crm", icon: LayoutDashboard, external: false, adminOnly: false },
+    { title: "Billing", url: "/billing", icon: CreditCard, external: false, adminOnly: false },
+    { title: "Suporte", url: "/suporte", icon: HelpCircle, external: false, adminOnly: false },
+    { title: "Tutorial", url: "/tutorial", icon: BookOpen, external: false, adminOnly: false },
+    { title: "Admin", url: "/admin", icon: Shield, external: false, adminOnly: true },
   ];
+
+  const visibleMenuItems = menuItems.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <Sidebar className={open ? "w-64" : "w-16"} collapsible="icon">
@@ -39,7 +44,7 @@ export function AppSidebar() {
           <SidebarGroupLabel className={!open ? "sr-only" : ""}>Menu Principal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
+              {visibleMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     {item.external ? (

@@ -63,46 +63,71 @@ serve(async (req) => {
 
     console.log(`[Jestor] Buscando dados para o período: ${periodo}`);
 
-    const leadsResponse = await fetch('https://mateussmaia.api.jestor.com/object/list', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${jestorToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        object_type: 'o_apnte00i6bwtdfd2rjc',
-        fields: ['*'],
-        limit: 10000
-      }),
-    });
+    // Buscar TODOS os leads com paginação
+    let allLeads: any[] = [];
+    let page = 1;
+    const pageSize = 100;
+    let hasMorePages = true;
 
-    if (!leadsResponse.ok) {
-      const errText = await leadsResponse.text();
-      console.error("[Jestor] Erro API:", errText);
-      throw new Error(`Failed to fetch Jestor data: ${leadsResponse.status}`);
-    }
+    while (hasMorePages) {
+      console.log(`[Jestor] Buscando página ${page}...`);
+      
+      const leadsResponse = await fetch('https://mateussmaia.api.jestor.com/object/list', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${jestorToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          object_type: 'o_apnte00i6bwtdfd2rjc',
+          fields: ['*'],
+          limit: pageSize,
+          page: page
+        }),
+      });
 
-    const leadsData = await leadsResponse.json();
-    
-    // --- DEBUG CRÍTICO: Ver o que a API retornou ---
-    console.log("[Jestor] Estrutura da resposta:", JSON.stringify(leadsData).substring(0, 500) + "..."); 
+      if (!leadsResponse.ok) {
+        const errText = await leadsResponse.text();
+        console.error("[Jestor] Erro API:", errText);
+        throw new Error(`Failed to fetch Jestor data: ${leadsResponse.status}`);
+      }
 
-    // Verificação de Segurança: Garante que 'leads' seja sempre um array
-    let leads: any[] = [];
-    
-    if (Array.isArray(leadsData.data)) {
-        leads = leadsData.data;
-    } else if (leadsData.data && Array.isArray(leadsData.data.items)) {
-        // Caso a API retorne { data: { items: [...] } }
-        leads = leadsData.data.items;
-    } else if (Array.isArray(leadsData)) {
-        // Caso a API retorne direto [...]
-        leads = leadsData;
-    } else {
+      const leadsData = await leadsResponse.json();
+      
+      if (page === 1) {
+        console.log("[Jestor] Estrutura da resposta:", JSON.stringify(leadsData).substring(0, 500) + "..."); 
+      }
+
+      let pageLeads: any[] = [];
+      
+      if (Array.isArray(leadsData.data)) {
+        pageLeads = leadsData.data;
+      } else if (leadsData.data && Array.isArray(leadsData.data.items)) {
+        pageLeads = leadsData.data.items;
+      } else if (Array.isArray(leadsData)) {
+        pageLeads = leadsData;
+      } else {
         console.error("[Jestor] ERRO: 'data' não é uma lista!", leadsData);
-        // Não lança erro 500, apenas considera lista vazia para não quebrar o front
-        leads = [];
+        pageLeads = [];
+      }
+
+      console.log(`[Jestor] Página ${page}: ${pageLeads.length} registros`);
+      
+      if (pageLeads.length === 0) {
+        hasMorePages = false;
+      } else {
+        allLeads = allLeads.concat(pageLeads);
+        
+        // Se retornou menos que pageSize, não há mais páginas
+        if (pageLeads.length < pageSize) {
+          hasMorePages = false;
+        } else {
+          page++;
+        }
+      }
     }
+
+    const leads = allLeads;
 
     console.log(`[Jestor] Total de registros processados: ${leads.length}`);
     console.log(`[Jestor] Período de filtro: ${firstDay.toISOString()} até ${lastDay.toISOString()}`);

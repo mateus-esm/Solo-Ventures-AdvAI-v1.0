@@ -73,9 +73,10 @@ const Dashboard = () => {
     );
   }
 
+  // Recalcular dados dos gráficos sempre que kpiData mudar
   const conversionData = [
-    { name: 'Leads → Reuniões', value: parseFloat(kpiData?.taxaConversaoReuniao || '0') },
-    { name: 'Reuniões → Negócios', value: parseFloat(kpiData?.taxaConversaoNegocio || '0') },
+    { name: 'Leads → Reuniões', value: kpiData ? parseFloat(kpiData.taxaConversaoReuniao) : 0 },
+    { name: 'Reuniões → Negócios', value: kpiData ? parseFloat(kpiData.taxaConversaoNegocio) : 0 },
   ];
 
   const funnelData = [

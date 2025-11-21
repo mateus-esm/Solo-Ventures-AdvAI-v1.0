@@ -63,71 +63,45 @@ serve(async (req) => {
 
     console.log(`[Jestor] Buscando dados para o período: ${periodo}`);
 
-    // Buscar TODOS os leads com paginação
-    let allLeads: any[] = [];
-    let page = 1;
-    const pageSize = 100;
-    let hasMorePages = true;
+    // Buscar TODOS os leads - sem paginação, com limite alto
+    console.log('[Jestor] Buscando todos os leads...');
+    
+    const leadsResponse = await fetch('https://mateussmaia.api.jestor.com/object/list', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${jestorToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        object_type: 'o_apnte00i6bwtdfd2rjc',
+        fields: ['*']
+        // Removido limit para tentar pegar todos os registros
+      }),
+    });
 
-    while (hasMorePages) {
-      console.log(`[Jestor] Buscando página ${page}...`);
-      
-      const leadsResponse = await fetch('https://mateussmaia.api.jestor.com/object/list', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${jestorToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          object_type: 'o_apnte00i6bwtdfd2rjc',
-          fields: ['*'],
-          limit: pageSize,
-          page: page
-        }),
-      });
-
-      if (!leadsResponse.ok) {
-        const errText = await leadsResponse.text();
-        console.error("[Jestor] Erro API:", errText);
-        throw new Error(`Failed to fetch Jestor data: ${leadsResponse.status}`);
-      }
-
-      const leadsData = await leadsResponse.json();
-      
-      if (page === 1) {
-        console.log("[Jestor] Estrutura da resposta:", JSON.stringify(leadsData).substring(0, 500) + "..."); 
-      }
-
-      let pageLeads: any[] = [];
-      
-      if (Array.isArray(leadsData.data)) {
-        pageLeads = leadsData.data;
-      } else if (leadsData.data && Array.isArray(leadsData.data.items)) {
-        pageLeads = leadsData.data.items;
-      } else if (Array.isArray(leadsData)) {
-        pageLeads = leadsData;
-      } else {
-        console.error("[Jestor] ERRO: 'data' não é uma lista!", leadsData);
-        pageLeads = [];
-      }
-
-      console.log(`[Jestor] Página ${page}: ${pageLeads.length} registros`);
-      
-      if (pageLeads.length === 0) {
-        hasMorePages = false;
-      } else {
-        allLeads = allLeads.concat(pageLeads);
-        
-        // Se retornou menos que pageSize, não há mais páginas
-        if (pageLeads.length < pageSize) {
-          hasMorePages = false;
-        } else {
-          page++;
-        }
-      }
+    if (!leadsResponse.ok) {
+      const errText = await leadsResponse.text();
+      console.error("[Jestor] Erro API:", errText);
+      throw new Error(`Failed to fetch Jestor data: ${leadsResponse.status}`);
     }
 
-    const leads = allLeads;
+    const leadsData = await leadsResponse.json();
+    
+    // Log completo da estrutura para debug
+    console.log("[Jestor] Resposta completa da API:", JSON.stringify(leadsData, null, 2));
+
+    let leads: any[] = [];
+    
+    if (Array.isArray(leadsData.data)) {
+      leads = leadsData.data;
+    } else if (leadsData.data && Array.isArray(leadsData.data.items)) {
+      leads = leadsData.data.items;
+    } else if (Array.isArray(leadsData)) {
+      leads = leadsData;
+    } else {
+      console.error("[Jestor] ERRO: 'data' não é uma lista!", leadsData);
+      leads = [];
+    }
 
     console.log(`[Jestor] Total de registros processados: ${leads.length}`);
     console.log(`[Jestor] Período de filtro: ${firstDay.toISOString()} até ${lastDay.toISOString()}`);
@@ -162,19 +136,15 @@ serve(async (req) => {
     const leadsAtendidos = currentMonthLeads.length;
     console.log(`[Jestor] Leads no período atual: ${leadsAtendidos}`);
 
+    // APENAS reuniões com checkbox marcado como true
     const reunioesAgendadas = currentMonthLeads.filter((lead: any) => {
-      const s = String(lead.status || '').toLowerCase();
-      const temFlagReuniao = lead.reuniao_agendada === true || lead.reuniao_agendada === 'true' || (lead.reuniao_agendada && lead.reuniao_agendada !== 'false');
-      const statusReuniao = s.includes('agendada') || s.includes('reunião') || s === 'agendado';
-      const isReuniao = temFlagReuniao || statusReuniao;
+      const isReuniao = lead.reuniao_agendada === true || lead.reuniao_agendada === 'true';
       
       if (isReuniao) {
-        console.log(`[Jestor] Reunião IDENTIFICADA:`, {
+        console.log(`[Jestor] Reunião IDENTIFICADA (checkbox=true):`, {
           name: lead.name,
           status: lead.status,
-          reuniao_agendada: lead.reuniao_agendada,
-          temFlagReuniao,
-          statusReuniao
+          reuniao_agendada: lead.reuniao_agendada
         });
       }
       

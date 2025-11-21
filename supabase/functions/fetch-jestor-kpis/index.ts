@@ -105,22 +105,58 @@ serve(async (req) => {
     }
 
     console.log(`[Jestor] Total de registros processados: ${leads.length}`);
+    console.log(`[Jestor] Período de filtro: ${firstDay.toISOString()} até ${lastDay.toISOString()}`);
 
     // Filtra leads criados no mês atual
     const currentMonthLeads = leads.filter((lead: any) => {
-      if (!lead.criado_em) return false;
+      if (!lead.criado_em) {
+        console.log(`[Jestor] Lead SEM data criado_em:`, { name: lead.name, id: lead.id_o_apnte00i6bwtdfd2rjc });
+        return false;
+      }
       const createdDate = new Date(lead.criado_em);
-      return createdDate >= firstDay && createdDate <= lastDay;
+      const isInPeriod = createdDate >= firstDay && createdDate <= lastDay;
+      
+      if (!isInPeriod) {
+        console.log(`[Jestor] Lead FORA do período:`, { 
+          name: lead.name, 
+          criado_em: lead.criado_em, 
+          createdDate: createdDate.toISOString() 
+        });
+      } else {
+        console.log(`[Jestor] Lead NO período:`, { 
+          name: lead.name, 
+          criado_em: lead.criado_em,
+          status: lead.status,
+          reuniao_agendada: lead.reuniao_agendada
+        });
+      }
+      
+      return isInPeriod;
     });
 
     const leadsAtendidos = currentMonthLeads.length;
+    console.log(`[Jestor] Leads no período atual: ${leadsAtendidos}`);
 
     const reunioesAgendadas = currentMonthLeads.filter((lead: any) => {
       const s = String(lead.status || '').toLowerCase();
       const temFlagReuniao = lead.reuniao_agendada === true || lead.reuniao_agendada === 'true' || (lead.reuniao_agendada && lead.reuniao_agendada !== 'false');
       const statusReuniao = s.includes('agendada') || s.includes('reunião') || s === 'agendado';
-      return temFlagReuniao || statusReuniao;
+      const isReuniao = temFlagReuniao || statusReuniao;
+      
+      if (isReuniao) {
+        console.log(`[Jestor] Reunião IDENTIFICADA:`, {
+          name: lead.name,
+          status: lead.status,
+          reuniao_agendada: lead.reuniao_agendada,
+          temFlagReuniao,
+          statusReuniao
+        });
+      }
+      
+      return isReuniao;
     }).length;
+    
+    console.log(`[Jestor] Total de reuniões agendadas: ${reunioesAgendadas}`);
 
     const negociosFechados = currentMonthLeads.filter((lead: any) => {
       const s = String(lead.status || '').toLowerCase();

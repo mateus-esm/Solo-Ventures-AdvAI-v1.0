@@ -32,7 +32,6 @@ serve(async (req) => {
     try { reqBody = await req.json(); } catch {}
     
     const now = new Date();
-    // Atenção: Se o frontend não mandar mês, pega o atual.
     const targetMonth = reqBody.month ? parseInt(reqBody.month) : now.getMonth() + 1;
     const targetYear = reqBody.year ? parseInt(reqBody.year) : now.getFullYear();
     
@@ -43,69 +42,104 @@ serve(async (req) => {
     const periodoString = `${targetYear}-${targetMonth.toString().padStart(2, '0')}`;
     console.log(`[Jestor KPI] Iniciando análise para Coorte: ${periodoString}`);
 
-    // 2. Buscar dados do Jestor
-    // Limit alto para garantir que pegamos todo o histórico recente
+    // 2. Buscar TODOS os dados do Jestor com paginação
     const jestorUrl = 'https://mateussmaia.api.jestor.com/object/list';
-    const bodyJestor = {
+    const allLeads: any[] = [];
+    let page = 1;
+    const pageSize = 100; // Jestor geralmente limita a ~100 por página
+    let hasMore = true;
+
+    while (hasMore) {
+      const bodyJestor = {
         object_type: 'o_apnte00i6bwtdfd2rjc',
         fields: [
-            'id_jestor', 
-            'criado_em', 
-            'reuniao_agendada', 
-            'status', 
-            'valor_da_proposta',
-            'nome' 
+          'id_jestor', 
+          'criado_em', 
+          'reuniao_agendada', 
+          'status', 
+          'valor_da_proposta',
+          'nome' 
         ],
-        limit: 5000, 
-        sort: 'criado_em', // Tenta ordenar por data para pegar os mais recentes se houver limite
+        limit: pageSize,
+        page: page,
+        sort: 'criado_em',
         direction: 'desc'
-    };
+      };
 
-    const response = await fetch(jestorUrl, {
-      method: 'POST',
-      headers: { 
-        'Authorization': `Bearer ${equipe.jestor_api_token}`,
-        'Content-Type': 'application/json' 
-      },
-      body: JSON.stringify(bodyJestor)
-    });
+      console.log(`[Jestor KPI] Buscando página ${page}...`);
 
-    if (!response.ok) throw new Error(`Jestor API Error: ${response.status}`);
+      const response = await fetch(jestorUrl, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${equipe.jestor_api_token}`,
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify(bodyJestor)
+      });
+
+      if (!response.ok) throw new Error(`Jestor API Error: ${response.status}`);
+      
+      const json = await response.json();
+      let pageLeads: any[] = [];
+      
+      if (Array.isArray(json.data)) {
+        pageLeads = json.data;
+      } else if (json.data?.items) {
+        pageLeads = json.data.items;
+      } else if (Array.isArray(json.items)) {
+        pageLeads = json.items;
+      }
+      
+      console.log(`[Jestor KPI] Página ${page}: ${pageLeads.length} registros`);
+      
+      if (pageLeads.length === 0) {
+        hasMore = false;
+      } else {
+        allLeads.push(...pageLeads);
+        page++;
+        
+        // Se retornou menos que o pageSize, não há mais páginas
+        if (pageLeads.length < pageSize) {
+          hasMore = false;
+        }
+        
+        // Limite de segurança para evitar loop infinito
+        if (page > 100) {
+          console.log('[Jestor KPI] Limite de páginas atingido (100)');
+          hasMore = false;
+        }
+      }
+    }
     
-    const json = await response.json();
-    let leads = [];
-    if (Array.isArray(json.data)) leads = json.data;
-    else if (json.data?.items) leads = json.data.items;
-    
-    console.log(`[Jestor KPI] Total de registros baixados: ${leads.length}`);
+    console.log(`[Jestor KPI] Total de registros baixados: ${allLeads.length}`);
 
     // 3. Filtragem e Cálculos
-    // Função para tratar datas do Jestor (ISO ou BR)
     const parseJestorDate = (val: any) => {
-        if (!val) return null;
-        const s = String(val).trim();
-        // Formato ISO: "2025-11-05T..."
-        if (s.includes('-') && s.includes('T')) return new Date(s);
-        // Formato BR: "05/11/2025"
-        if (s.includes('/')) {
-            const [d, m, y] = s.split('/');
-            // Verifica se tem hora "05/11/2025 14:30"
-            if (y.includes(' ')) {
-                const [yearPart, timePart] = y.split(' ');
-                return new Date(parseInt(yearPart), parseInt(m)-1, parseInt(d));
-            }
-            return new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+      if (!val) return null;
+      const s = String(val).trim();
+      // Formato ISO: "2025-11-05T..."
+      if (s.includes('-') && s.includes('T')) return new Date(s);
+      // Formato ISO sem T: "2025-11-05"
+      if (s.match(/^\d{4}-\d{2}-\d{2}$/)) return new Date(s + 'T00:00:00');
+      // Formato BR: "05/11/2025"
+      if (s.includes('/')) {
+        const [d, m, y] = s.split('/');
+        if (y && y.includes(' ')) {
+          const [yearPart] = y.split(' ');
+          return new Date(parseInt(yearPart), parseInt(m)-1, parseInt(d));
         }
-        // Tentativa genérica
-        const d = new Date(s);
-        return isNaN(d.getTime()) ? null : d;
+        return new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+      }
+      // Tentativa genérica
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
     };
 
     // Filtra leads que NASCERAM no mês selecionado (Coorte)
-    const leadsDoMes = leads.filter((lead: any) => {
-        const dataCriacao = parseJestorDate(lead.criado_em);
-        if (!dataCriacao) return false;
-        return dataCriacao >= firstDay && dataCriacao <= lastDay;
+    const leadsDoMes = allLeads.filter((lead: any) => {
+      const dataCriacao = parseJestorDate(lead.criado_em);
+      if (!dataCriacao) return false;
+      return dataCriacao >= firstDay && dataCriacao <= lastDay;
     });
 
     console.log(`[Jestor KPI] Leads filtrados na coorte ${periodoString}: ${leadsDoMes.length}`);
@@ -115,50 +149,52 @@ serve(async (req) => {
 
     // Reunião Agendada (Campo checkbox: true/false ou string "true")
     const reunioesAgendadas = leadsDoMes.filter((lead: any) => {
-        const r = lead.reuniao_agendada;
-        return r === true || r === 'true' || r === 1;
+      const r = lead.reuniao_agendada;
+      return r === true || r === 'true' || r === 1 || r === '1';
     }).length;
 
     // Negócios Fechados (Campo status: contém "ganho" ou "fechado")
     const negociosFechados = leadsDoMes.filter((lead: any) => {
-        const s = String(lead.status || '').toLowerCase();
-        return s.includes('ganho') || s.includes('fechado') || s.includes('contrato');
+      const s = String(lead.status || '').toLowerCase();
+      return s.includes('ganho') || s.includes('fechado') || s.includes('contrato');
     }).length;
 
     // Valor (Campo valor_da_proposta)
     const valorTotalNegocios = leadsDoMes
-        .filter((lead: any) => {
-            const s = String(lead.status || '').toLowerCase();
-            return s.includes('ganho') || s.includes('fechado');
-        })
-        .reduce((acc: number, lead: any) => {
-            let v = lead.valor_da_proposta;
-            if (typeof v === 'string') {
-                // Remove R$, espaços e converte vírgula decimal se houver
-                v = parseFloat(v.replace(/[^\d,.-]/g, '').replace(',', '.'));
-            }
-            return acc + (Number(v) || 0);
-        }, 0);
+      .filter((lead: any) => {
+        const s = String(lead.status || '').toLowerCase();
+        return s.includes('ganho') || s.includes('fechado');
+      })
+      .reduce((acc: number, lead: any) => {
+        let v = lead.valor_da_proposta;
+        if (typeof v === 'string') {
+          v = parseFloat(v.replace(/[^\d,.-]/g, '').replace(',', '.'));
+        }
+        return acc + (Number(v) || 0);
+      }, 0);
+
+    console.log(`[Jestor KPI] Métricas calculadas - Leads: ${leadsAtendidos}, Reuniões: ${reunioesAgendadas}, Fechados: ${negociosFechados}, Valor: ${valorTotalNegocios}`);
 
     // Salvar no banco (Cache)
     const { error: upsertError } = await supabaseClient.from('kpis_dashboard').upsert({
-        equipe_id: profile.equipe_id,
-        periodo: periodoString,
-        leads_atendidos: leadsAtendidos,
-        reunioes_agendadas: reunioesAgendadas,
-        negocios_fechados: negociosFechados,
-        valor_total_negocios: valorTotalNegocios,
-        updated_at: new Date().toISOString()
+      equipe_id: profile.equipe_id,
+      periodo: periodoString,
+      leads_atendidos: leadsAtendidos,
+      reunioes_agendadas: reunioesAgendadas,
+      negocios_fechados: negociosFechados,
+      valor_total_negocios: valorTotalNegocios,
+      updated_at: new Date().toISOString()
     }, { onConflict: 'equipe_id,periodo' });
 
     if (upsertError) console.error('[Jestor KPI] Erro ao salvar:', upsertError);
 
     return new Response(JSON.stringify({
-        leadsAtendidos,
-        reunioesAgendadas,
-        negociosFechados,
-        valorTotalNegocios,
-        periodo: periodoString
+      leadsAtendidos,
+      reunioesAgendadas,
+      negociosFechados,
+      valorTotalNegocios,
+      periodo: periodoString,
+      totalRegistrosBaixados: allLeads.length
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error: any) {

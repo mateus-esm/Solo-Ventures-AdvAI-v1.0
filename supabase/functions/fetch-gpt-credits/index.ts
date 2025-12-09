@@ -24,7 +24,7 @@ serve(async (req) => {
     if (!user) throw new Error('Unauthorized');
 
     // 1. Ler Mês/Ano do Body da requisição
-    let reqBody = {};
+    let reqBody: { year?: string; month?: string } = {};
     try { reqBody = await req.json(); } catch {}
     
     const now = new Date();

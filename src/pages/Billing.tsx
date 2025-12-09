@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Zap, TrendingUp, Loader2, RefreshCcw, MessageCircle, CreditCard, QrCode, Copy, Users, History, Lock } from "lucide-react";
+import { Zap, TrendingUp, Loader2, RefreshCcw, MessageCircle, CreditCard, QrCode, Copy, Users, History, FileText, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface CreditData {
@@ -65,6 +65,10 @@ const Billing = () => {
       // 1. Créditos
       const { data: creditResponse, error: creditError } = await supabase.functions.invoke('fetch-gpt-credits');
       if (creditError) throw creditError;
+      
+      // Log para debug do consumo
+      console.log("Dados de Crédito Recebidos:", creditResponse);
+      
       setCreditData(creditResponse);
 
       // 2. Perfil e Plano
@@ -78,15 +82,13 @@ const Billing = () => {
         .single();
 
       if (profile?.equipe_id) {
-        // Busca plano com reload forçado para evitar cache
-        const { data: equipe, error: equipeError } = await supabase
+        const { data: equipe } = await supabase
           .from('equipes')
           .select('plano_id, creditos_avulsos, planos(*)')
           .eq('id', profile.equipe_id)
           .single();
 
         if (equipe?.planos) {
-          console.log("Plano carregado do banco:", equipe.planos); // Debug
           setPlano(equipe.planos as unknown as Plano);
         }
 
@@ -102,13 +104,52 @@ const Billing = () => {
       }
     } catch (error: any) {
       console.error('Error fetching billing data:', error);
-      // Não mostrar toast de erro se for apenas falta de dados iniciais
     } finally {
       setLoading(false);
     }
   };
 
-  // --- Lógica de Cartão de Crédito ---
+  const handleRecharge = () => {
+    const totalCost = (selectedCredits / 500) * 40;
+    const message = `Gostaria de recarregar ${selectedCredits.toLocaleString()} créditos (R$ ${totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`;
+    window.open(`https://wa.me/5585996487923?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
+  const initiatePurchase = () => {
+    const action = { type: 'buy_credits' as const, payload: { credits: selectedCredits } };
+    if (paymentMethod === 'CREDIT_CARD') {
+      setPendingAction(action);
+      setCardDialogOpen(true);
+    } else {
+      handlePixPurchase(action);
+    }
+  };
+
+  const initiatePlanUpgrade = (planoId: number) => {
+    setPendingAction({ type: 'upgrade_plan', payload: { planoId } });
+    setCardDialogOpen(true); 
+  };
+
+  const handlePixPurchase = async (action: any) => {
+    setProcessing(true);
+    try {
+      const totalCost = (action.payload.credits / 500) * 40;
+      const { data, error } = await supabase.functions.invoke('asaas-buy-credits', {
+        body: { amount: totalCost, paymentMethod: 'PIX', credits: action.payload.credits }
+      });
+      if (error) throw error;
+      
+      if (data.pixQrCode) {
+        setPixData({ qrCode: data.pixQrCode, copyPaste: data.pixCopyPaste });
+        setPixDialogOpen(true);
+      }
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const tokenizeCard = async () => {
     const { data, error } = await supabase.functions.invoke('asaas-tokenize', {
       body: {
@@ -121,8 +162,8 @@ const Billing = () => {
         },
         creditCardHolderInfo: {
             name: cardData.holderName,
-            email: "cliente@exemplo.com", // TODO: Pegar do profile
-            cpfCnpj: "00000000000", // TODO: Pegar do profile
+            email: "cliente@exemplo.com", // TODO: Integrar com dados reais do perfil
+            cpfCnpj: "00000000000",
             postalCode: "00000000",
             addressNumber: "0",
             phone: "00000000000"
@@ -164,54 +205,15 @@ const Billing = () => {
     }
   };
 
-  // --- Handlers de Ação ---
-  const initiatePurchase = () => {
-    const action = { type: 'buy_credits' as const, payload: { credits: selectedCredits } };
-    if (paymentMethod === 'CREDIT_CARD') {
-      setPendingAction(action);
-      setCardDialogOpen(true);
-    } else {
-      handlePixPurchase(action);
-    }
-  };
-
-  const initiatePlanUpgrade = (planoId: number) => {
-    setPendingAction({ type: 'upgrade_plan', payload: { planoId } });
-    setCardDialogOpen(true); // Planos sempre pedem cartão para recorrência
-  };
-
-  const handlePixPurchase = async (action: any) => {
-    setProcessing(true);
-    try {
-      const totalCost = (action.payload.credits / 500) * 40;
-      const { data, error } = await supabase.functions.invoke('asaas-buy-credits', {
-        body: { amount: totalCost, paymentMethod: 'PIX', credits: action.payload.credits }
-      });
-      if (error) throw error;
-      
-      if (data.pixQrCode) {
-        setPixData({ qrCode: data.pixQrCode, copyPaste: data.pixCopyPaste });
-        setPixDialogOpen(true);
-      }
-    } catch (e: any) {
-      toast({ title: "Erro", description: e.message, variant: "destructive" });
-    } finally {
-      setProcessing(false);
-    }
-  };
-
   useEffect(() => { fetchCredits(); }, []);
 
-  if (loading) {
-    return <div className="flex-1 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-  }
+  if (loading) return <div className="flex-1 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   const totalCredits = creditData?.totalCredits || 1000;
   const usagePercentage = totalCredits > 0 ? ((creditData?.creditsSpent || 0) / totalCredits) * 100 : 0;
 
   return (
     <div className="flex-1 flex flex-col">
-      {/* Header Original */}
       <div className="border-b border-border bg-header-bg">
         <div className="container mx-auto px-4 py-4">
           <h1 className="text-2xl font-bold text-foreground">
@@ -224,193 +226,140 @@ const Billing = () => {
       </div>
 
       <div className="flex-1 container mx-auto px-4 py-6 space-y-6">
-        {/* Card do Plano Atual (Original) */}
+        
+        {/* PLANO ATUAL */}
         {plano && (
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Plano Atual</CardTitle>
-                  <CardDescription>Detalhes da sua assinatura ativa</CardDescription>
-                </div>
+                <div><CardTitle>Plano Atual</CardTitle><CardDescription>Sua assinatura ativa</CardDescription></div>
                 <Badge variant="secondary" className="text-lg px-4 py-1">{plano.nome}</Badge>
               </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Valor Mensal</p>
-                  <p className="text-2xl font-bold">R$ {plano.preco_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Limite de Créditos</p>
-                  <p className="text-2xl font-bold">{plano.limite_creditos.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Usuários</p>
-                  <p className="text-2xl font-bold">{plano.limite_usuarios ? plano.limite_usuarios : 'Ilimitado'}</p>
-                </div>
+                <div><p className="text-sm text-muted-foreground">Valor Mensal</p><p className="text-2xl font-bold">R$ {plano.preco_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
+                <div><p className="text-sm text-muted-foreground">Limite de Créditos</p><p className="text-2xl font-bold">{plano.limite_creditos.toLocaleString()}</p></div>
+                <div><p className="text-sm text-muted-foreground">Usuários</p><p className="text-2xl font-bold">{plano.limite_usuarios || 'Ilimitado'}</p></div>
+              </div>
+              <div className="border-t pt-4">
+                <p className="text-sm font-semibold mb-2">Funcionalidades Incluídas:</p>
+                <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {plano.funcionalidades?.map((func, index) => (
+                    <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-primary" />{func}
+                    </li>
+                  ))}
+                </ul>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Visão Geral de Créditos (Original) */}
+        {/* MÉTRICAS DE CONSUMO */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Créditos do Plano</CardTitle>
-              <Zap className="h-4 w-4 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{creditData?.planLimit || 0}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Créditos Avulsos</CardTitle>
-              <Zap className="h-4 w-4 text-yellow-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{creditData?.extraCredits || 0}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Consumo do Mês</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{creditData?.creditsSpent || 0}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Saldo Disponível</CardTitle>
-              <Zap className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">{creditData?.creditsBalance || 0}</div>
-            </CardContent>
-          </Card>
+          <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Limite Plano</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{creditData?.planLimit || 0}</div></CardContent></Card>
+          <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Créditos Avulsos</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{creditData?.extraCredits || 0}</div></CardContent></Card>
+          <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Utilizado Mês</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{creditData?.creditsSpent || 0}</div></CardContent></Card>
+          <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Disponível</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">{creditData?.creditsBalance || 0}</div></CardContent></Card>
         </div>
 
-        {/* Barra de Progresso (Original) */}
+        {/* PROGRESSO */}
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Consumo de Créditos</CardTitle>
-                <CardDescription>Visualização do uso mensal</CardDescription>
-              </div>
-              <Button onClick={fetchCredits} variant="outline" size="sm">
-                <RefreshCcw className="h-4 w-4 mr-2" />
-                Atualizar
-              </Button>
-            </div>
-          </CardHeader>
+          <CardHeader><div className="flex justify-between"><CardTitle>Consumo de Créditos</CardTitle><Button onClick={fetchCredits} variant="outline" size="sm"><RefreshCcw className="h-4 w-4 mr-2"/>Atualizar</Button></div></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Utilizado</span>
-                <span className="font-medium">{creditData?.creditsSpent || 0} / {totalCredits}</span>
-              </div>
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Utilizado</span><span className="font-medium">{creditData?.creditsSpent || 0} / {totalCredits}</span></div>
               <Progress value={usagePercentage} className="h-2" />
+            </div>
+            <div className="pt-4 space-y-2 border-t text-sm grid grid-cols-2">
+               <div><p className="text-muted-foreground">Período</p><p className="font-medium">{creditData?.periodo}</p></div>
+               <div><p className="text-muted-foreground">Status</p><p className="font-medium text-green-600">Ativo</p></div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Recarga de Créditos (Original com Opção de Cartão) */}
+        {/* RECARGA */}
         <Card>
-          <CardHeader>
-            <CardTitle>Recarga de Créditos</CardTitle>
-            <CardDescription>Adicione créditos extras à sua conta</CardDescription>
-          </CardHeader>
+          <CardHeader><CardTitle>Recarga de Créditos</CardTitle><CardDescription>Compre créditos avulsos para continuar operando</CardDescription></CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Quantidade</label>
-                <span className="text-2xl font-bold text-primary">{selectedCredits.toLocaleString()}</span>
-              </div>
-              <Slider
-                value={[selectedCredits]}
-                onValueChange={(value) => setSelectedCredits(value[0])}
-                min={500}
-                max={10000}
-                step={500}
-                className="w-full"
-              />
+              <div className="flex justify-between"><label className="text-sm font-medium">Quantidade</label><span className="text-2xl font-bold text-primary">{selectedCredits.toLocaleString()}</span></div>
+              <Slider value={[selectedCredits]} onValueChange={(v) => setSelectedCredits(v[0])} min={500} max={10000} step={500} />
             </div>
-
             <div className="space-y-4">
-              <Label className="text-sm font-medium">Método de Pagamento</Label>
-              <RadioGroup value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as any)} className="grid grid-cols-2 gap-4">
+              <Label>Método de Pagamento</Label>
+              <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)} className="grid grid-cols-2 gap-4">
                 <div className={`flex items-center space-x-2 border rounded-lg p-3 cursor-pointer ${paymentMethod === 'PIX' ? 'border-primary bg-primary/5' : ''}`}>
-                  <RadioGroupItem value="PIX" id="pix" />
-                  <Label htmlFor="pix" className="flex items-center gap-2 cursor-pointer"><QrCode className="h-4 w-4"/> Pix</Label>
+                  <RadioGroupItem value="PIX" id="pix" /><Label htmlFor="pix" className="flex items-center gap-2 cursor-pointer"><QrCode className="h-4 w-4"/> Pix</Label>
                 </div>
                 <div className={`flex items-center space-x-2 border rounded-lg p-3 cursor-pointer ${paymentMethod === 'CREDIT_CARD' ? 'border-primary bg-primary/5' : ''}`}>
-                  <RadioGroupItem value="CREDIT_CARD" id="card" />
-                  <Label htmlFor="card" className="flex items-center gap-2 cursor-pointer"><CreditCard className="h-4 w-4"/> Cartão</Label>
+                  <RadioGroupItem value="CREDIT_CARD" id="card" /><Label htmlFor="card" className="flex items-center gap-2 cursor-pointer"><CreditCard className="h-4 w-4"/> Cartão</Label>
                 </div>
               </RadioGroup>
             </div>
-
-            <div className="border-t pt-4 flex items-center justify-between">
-              <div className="flex flex-col">
-                <span className="text-sm text-muted-foreground">Total a pagar</span>
-                <span className="text-2xl font-bold">R$ {((selectedCredits / 500) * 40).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <Button onClick={initiatePurchase} disabled={processing} size="lg">
-                {processing ? <Loader2 className="animate-spin" /> : (paymentMethod === 'PIX' ? 'Gerar PIX' : 'Pagar com Cartão')}
-              </Button>
+            <div className="border-t pt-4 flex justify-between items-center">
+              <div><span className="text-sm text-muted-foreground">Total</span><p className="text-2xl font-bold">R$ {((selectedCredits / 500) * 40).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
+              <Button onClick={initiatePurchase} disabled={processing} size="lg">{processing ? <Loader2 className="animate-spin" /> : 'Comprar Créditos'}</Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Planos Disponíveis (Original) */}
+        {/* PLANOS */}
         <div className="space-y-4 pt-4 border-t">
           <h2 className="text-2xl font-bold">Mudar de Plano</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Cards de Plano simplificados para brevidade - Mantenha o design original aqui */}
             {/* Solo Starter */}
             <Card className="border-border hover:border-primary transition-all">
               <CardHeader><CardTitle>Solo Starter</CardTitle><CardDescription>R$ 150/mês</CardDescription></CardHeader>
-              <CardContent><Button variant="outline" className="w-full" onClick={() => initiatePlanUpgrade(1)}>Escolher Starter</Button></CardContent>
+              <CardContent className="space-y-4">
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> 1.000 Créditos</li>
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Até 3 Usuários</li>
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Setup do Agente</li>
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> CRM Visualização</li>
+                </ul>
+                <Button variant="outline" className="w-full mt-4" onClick={() => initiatePlanUpgrade(1)}>Escolher Starter</Button>
+              </CardContent>
             </Card>
             {/* Solo Scale */}
-            <Card className="border-primary border-2 shadow-md">
+            <Card className="border-primary border-2 shadow-md relative">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2"><Badge className="bg-primary text-white">Mais Popular</Badge></div>
               <CardHeader><CardTitle>Solo Scale</CardTitle><CardDescription>R$ 400/mês</CardDescription></CardHeader>
-              <CardContent><Button className="w-full" onClick={() => initiatePlanUpgrade(2)}>Escolher Scale</Button></CardContent>
+              <CardContent className="space-y-4">
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> 3.000 Créditos</li>
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Até 5 Usuários</li>
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Dashboard Performance</li>
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Gestão de Billing</li>
+                </ul>
+                <Button className="w-full mt-4" onClick={() => initiatePlanUpgrade(2)}>Escolher Scale</Button>
+              </CardContent>
             </Card>
             {/* Solo Pro */}
             <Card className="border-border hover:border-primary transition-all">
               <CardHeader><CardTitle>Solo Pro</CardTitle><CardDescription>R$ 1.000/mês</CardDescription></CardHeader>
-              <CardContent><Button variant="outline" className="w-full" onClick={() => initiatePlanUpgrade(3)}>Escolher Pro</Button></CardContent>
+              <CardContent className="space-y-4">
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> 10.000 Créditos</li>
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Usuários Ilimitados</li>
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Consultoria Dev</li>
+                  <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Customizações</li>
+                </ul>
+                <Button variant="outline" className="w-full mt-4" onClick={() => initiatePlanUpgrade(3)}>Escolher Pro</Button>
+              </CardContent>
             </Card>
           </div>
         </div>
 
-        {/* NOVA ÁREA: Histórico de Transações */}
+        {/* HISTÓRICO */}
         <div className="space-y-4 pt-4 border-t">
-          <div className="flex items-center gap-2">
-            <History className="h-6 w-6 text-primary" />
-            <h2 className="text-2xl font-bold">Histórico de Transações</h2>
-          </div>
+          <div className="flex items-center gap-2"><History className="h-6 w-6 text-primary" /><h2 className="text-2xl font-bold">Histórico Financeiro</h2></div>
           <Card>
             <CardContent className="p-0">
-              {transacoes.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground">Nenhuma transação recente encontrada.</div>
-              ) : (
+              {transacoes.length === 0 ? <div className="p-8 text-center text-muted-foreground">Nenhuma transação recente encontrada.</div> : (
                 <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead>Valor</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
+                  <TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Descrição</TableHead><TableHead>Valor</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {transacoes.map((t) => (
                       <TableRow key={t.id}>
@@ -434,17 +383,14 @@ const Billing = () => {
           <DialogHeader><DialogTitle>Pagamento via PIX</DialogTitle></DialogHeader>
           <div className="flex flex-col items-center gap-4 py-4">
             {pixData?.qrCode && <img src={`data:image/png;base64,${pixData.qrCode}`} className="w-48 h-48" />}
-            <div className="flex gap-2 w-full">
-              <Input value={pixData?.copyPaste} readOnly />
-              <Button onClick={() => navigator.clipboard.writeText(pixData?.copyPaste || "")}><Copy className="h-4 w-4"/></Button>
-            </div>
+            <div className="flex gap-2 w-full"><Input value={pixData?.copyPaste} readOnly /><Button onClick={() => navigator.clipboard.writeText(pixData?.copyPaste || "")}><Copy className="h-4 w-4"/></Button></div>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={cardDialogOpen} onOpenChange={setCardDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Dados do Cartão</DialogTitle><DialogDescription>Ambiente seguro Asaas</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Cartão de Crédito</DialogTitle><DialogDescription>Ambiente Seguro</DialogDescription></DialogHeader>
           <form onSubmit={handleCardSubmit} className="space-y-4">
             <Input placeholder="Nome no Cartão" value={cardData.holderName} onChange={e => setCardData({...cardData, holderName: e.target.value})} required />
             <Input placeholder="Número" value={cardData.number} onChange={e => setCardData({...cardData, number: e.target.value})} required />
@@ -453,9 +399,7 @@ const Billing = () => {
               <Input placeholder="AAAA" maxLength={4} value={cardData.expiryYear} onChange={e => setCardData({...cardData, expiryYear: e.target.value})} required />
               <Input placeholder="CVV" maxLength={4} value={cardData.ccv} onChange={e => setCardData({...cardData, ccv: e.target.value})} required />
             </div>
-            <DialogFooter>
-              <Button type="submit" disabled={processing} className="w-full">{processing ? <Loader2 className="animate-spin" /> : 'Pagar'}</Button>
-            </DialogFooter>
+            <DialogFooter><Button type="submit" disabled={processing} className="w-full">{processing ? <Loader2 className="animate-spin" /> : 'Confirmar'}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

@@ -72,16 +72,19 @@ const Billing = () => {
 
   const { toast } = useToast();
 
+  const [filterLoading, setFilterLoading] = useState(false);
+
   const fetchCredits = async (month?: string, year?: string) => {
     try {
       setLoading(true);
+      setFilterLoading(true);
       
       const m = month || filterMonth;
       const y = year || filterYear;
 
       // 1. Créditos (Passando data para API)
       const { data: creditResponse, error: creditError } = await supabase.functions.invoke('fetch-gpt-credits', {
-        body: { month: m, year: y } // Envia filtro para o backend
+        body: { month: m, year: y }
       });
       
       if (creditError) throw creditError;
@@ -129,6 +132,7 @@ const Billing = () => {
       console.error('Error fetching billing data:', error);
     } finally {
       setLoading(false);
+      setFilterLoading(false);
     }
   };
 
@@ -291,9 +295,13 @@ const Billing = () => {
 
             {/* SELETOR DE MÊS (Para conferir o consumo 788 vs 1108) */}
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Consumo de Créditos</h2>
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <TrendingUp className="w-5 h-5"/>
+                Consumo de Créditos
+                {filterLoading && <Loader2 className="w-4 h-4 animate-spin text-primary ml-2" />}
+              </h2>
               <div className="flex gap-2">
-                <Select value={filterMonth} onValueChange={(v) => handleFilterChange('month', v)}>
+                <Select value={filterMonth} onValueChange={(v) => handleFilterChange('month', v)} disabled={filterLoading}>
                   <SelectTrigger className="w-[140px]"><SelectValue placeholder="Mês" /></SelectTrigger>
                   <SelectContent>
                     {Array.from({length: 12}, (_, i) => i + 1).map(m => (
@@ -301,13 +309,15 @@ const Billing = () => {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={filterYear} onValueChange={(v) => handleFilterChange('year', v)}>
+                <Select value={filterYear} onValueChange={(v) => handleFilterChange('year', v)} disabled={filterLoading}>
                   <SelectTrigger className="w-[100px]"><SelectValue placeholder="Ano" /></SelectTrigger>
                   <SelectContent>
-                    {[2024, 2025].map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}
+                    {[2024, 2025, 2026].map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Button onClick={() => fetchCredits()} variant="ghost" size="icon"><RefreshCcw className="h-4 w-4"/></Button>
+                <Button onClick={() => fetchCredits()} variant="ghost" size="icon" disabled={filterLoading}>
+                  <RefreshCcw className={`h-4 w-4 ${filterLoading ? 'animate-spin' : ''}`}/>
+                </Button>
               </div>
             </div>
 
@@ -315,8 +325,16 @@ const Billing = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Limite Plano</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{creditData?.planLimit || 0}</div></CardContent></Card>
               <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Créditos Avulsos</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{creditData?.extraCredits || 0}</div></CardContent></Card>
-              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Utilizado ({creditData?.periodo})</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-primary">{creditData?.creditsSpent || 0}</div></CardContent></Card>
-              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Disponível</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">{creditData?.creditsBalance || 0}</div></CardContent></Card>
+              <Card className="border-primary/50 bg-primary/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    Utilizado em {new Date(0, parseInt(filterMonth) - 1).toLocaleString('pt-BR', {month: 'short'})}/{filterYear}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent><div className="text-2xl font-bold text-primary">{creditData?.creditsSpent || 0}</div></CardContent>
+              </Card>
+              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Saldo Disponível</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">{creditData?.creditsBalance || 0}</div></CardContent></Card>
             </div>
 
             {/* PROGRESSO */}

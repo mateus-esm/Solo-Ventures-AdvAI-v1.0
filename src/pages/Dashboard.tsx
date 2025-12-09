@@ -1,71 +1,116 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { TrendingUp, Users, Calendar, DollarSign, Loader2, RefreshCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-interface KPIData {
-  leadsAtendidos: number;
-  reunioesAgendadas: number;
-  negociosFechados: number;
-  valorTotalNegocios: number;
-  taxaConversaoReuniao: string;
-  taxaConversaoNegocio: string;
+interface KPIRecord {
   periodo: string;
+  leads_atendidos: number;
+  reunioes_agendadas: number;
+  negocios_fechados: number;
+  valor_total_negocios: number;
 }
 
 const Dashboard = () => {
-  const [kpiData, setKpiData] = useState<KPIData | null>(null);
+  const [rawData, setRawData] = useState<KPIRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   
   const currentDate = new Date();
-  const [selectedMonth, setSelectedMonth] = useState<string>((currentDate.getMonth() + 1).toString());
   const [selectedYear, setSelectedYear] = useState<string>(currentDate.getFullYear().toString());
+  const [selectedMonth, setSelectedMonth] = useState<string>((currentDate.getMonth() + 1).toString());
 
-  const fetchKPIs = async (month?: string, year?: string) => {
+  // Busca todos os KPIs do backend (sincroniza com Jestor)
+  const fetchKPIs = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.functions.invoke('fetch-jestor-kpis', {
-        body: { 
-          month: month || selectedMonth, 
-          year: year || selectedYear 
-        }
-      });
+      const { data, error } = await supabase.functions.invoke('fetch-jestor-kpis');
 
       if (error) throw error;
 
-      setKpiData(data);
+      if (Array.isArray(data)) {
+        setRawData(data);
+      }
     } catch (error: any) {
       console.error('Error fetching KPIs:', error);
       toast({
-        title: "Erro ao carregar KPIs",
-        description: error.message || "Não foi possível carregar os dados do dashboard",
+        title: "Erro de Sincronização",
+        description: "Carregando cache local...",
         variant: "destructive",
       });
+      // Fallback: lê do banco local
+      await fetchLocalData();
     } finally {
       setLoading(false);
     }
   };
 
+  // Fallback para cache local
+  const fetchLocalData = async () => {
+    const { data } = await supabase
+      .from('kpis_dashboard')
+      .select('periodo, leads_atendidos, reunioes_agendadas, negocios_fechados, valor_total_negocios')
+      .order('periodo', { ascending: false });
+    if (data) setRawData(data as KPIRecord[]);
+  };
+
   useEffect(() => {
     fetchKPIs();
   }, []);
-  
-  const handleMonthChange = (month: string) => {
-    setSelectedMonth(month);
-    fetchKPIs(month, selectedYear);
-  };
-  
-  const handleYearChange = (year: string) => {
-    setSelectedYear(year);
-    fetchKPIs(selectedMonth, year);
+
+  // Dados do gráfico: todos os meses do ano selecionado
+  const chartData = rawData
+    .filter(d => d.periodo.startsWith(selectedYear))
+    .sort((a, b) => a.periodo.localeCompare(b.periodo))
+    .map(d => {
+      const [year, month] = d.periodo.split('-');
+      const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleString('pt-BR', { month: 'short' });
+      return {
+        name: monthName.charAt(0).toUpperCase() + monthName.slice(1),
+        Leads: d.leads_atendidos,
+        Reuniões: d.reunioes_agendadas,
+        Vendas: d.negocios_fechados,
+      };
+    });
+
+  // Cálculo das métricas para os cards (filtra por mês ou ano completo)
+  const calculateMetrics = () => {
+    let filtered = rawData.filter(d => d.periodo.startsWith(selectedYear));
+
+    if (selectedMonth !== 'all') {
+      const targetPeriod = `${selectedYear}-${selectedMonth.padStart(2, '0')}`;
+      filtered = filtered.filter(d => d.periodo === targetPeriod);
+    }
+
+    const totals = filtered.reduce((acc, curr) => ({
+      leads: acc.leads + (curr.leads_atendidos || 0),
+      meetings: acc.meetings + (curr.reunioes_agendadas || 0),
+      deals: acc.deals + (curr.negocios_fechados || 0),
+      value: acc.value + (curr.valor_total_negocios || 0)
+    }), { leads: 0, meetings: 0, deals: 0, value: 0 });
+
+    const conversionMeeting = totals.leads > 0 ? ((totals.meetings / totals.leads) * 100).toFixed(1) : '0.0';
+    const conversionDeal = totals.meetings > 0 ? ((totals.deals / totals.meetings) * 100).toFixed(1) : '0.0';
+
+    return { ...totals, conversionMeeting, conversionDeal };
   };
 
-  if (loading) {
+  const metrics = calculateMetrics();
+
+  // Descrição do período selecionado
+  const getPeriodLabel = () => {
+    if (selectedMonth === 'all') {
+      return `Ano ${selectedYear}`;
+    }
+    const monthName = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1).toLocaleString('pt-BR', { month: 'long' });
+    return `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${selectedYear}`;
+  };
+
+  if (loading && rawData.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -73,39 +118,27 @@ const Dashboard = () => {
     );
   }
 
-  // Recalcular dados dos gráficos sempre que kpiData mudar
-  const conversionData = [
-    { name: 'Leads → Reuniões', value: kpiData ? parseFloat(kpiData.taxaConversaoReuniao) : 0 },
-    { name: 'Reuniões → Negócios', value: kpiData ? parseFloat(kpiData.taxaConversaoNegocio) : 0 },
-  ];
-
-  const funnelData = [
-    { name: 'Leads Atendidos', value: kpiData?.leadsAtendidos || 0, color: '#3b82f6' },
-    { name: 'Reuniões', value: kpiData?.reunioesAgendadas || 0, color: '#8b5cf6' },
-    { name: 'Negócios Fechados', value: kpiData?.negociosFechados || 0, color: '#10b981' },
-  ];
-
-  const COLORS = ['#3b82f6', '#8b5cf6'];
-
   return (
     <div className="flex-1 flex flex-col">
-      <div className="border-b border-border bg-gradient-to-r from-background to-soft-gray">
+      <div className="border-b border-border bg-gradient-to-r from-background to-muted/30">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-foreground">
                 Dashboard <span className="text-primary">Performance</span>
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Análise de Performance do Agente AdvAI • {kpiData?.periodo}
+                Análise de Resultados do Agente AdvAI • {getPeriodLabel()}
               </p>
             </div>
+            
             <div className="flex items-center gap-2">
-              <Select value={selectedMonth} onValueChange={handleMonthChange}>
-                <SelectTrigger className="w-32">
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Mês" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="all">Ano Completo</SelectItem>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
                     <SelectItem key={month} value={month.toString()}>
                       {new Date(2000, month - 1).toLocaleDateString('pt-BR', { month: 'long' })}
@@ -113,20 +146,20 @@ const Dashboard = () => {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={selectedYear} onValueChange={handleYearChange}>
-                <SelectTrigger className="w-28">
+
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger className="w-[100px]">
                   <SelectValue placeholder="Ano" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Array.from({ length: 5 }, (_, i) => currentDate.getFullYear() - i).map((year) => (
-                    <SelectItem key={year} value={year.toString()}>
-                      {year}
-                    </SelectItem>
+                  {[2024, 2025, 2026].map((year) => (
+                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Button onClick={() => fetchKPIs()} variant="outline" size="icon">
-                <RefreshCcw className="h-4 w-4" />
+
+              <Button onClick={fetchKPIs} variant="outline" size="icon" title="Sincronizar com Jestor" disabled={loading}>
+                <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </Button>
             </div>
           </div>
@@ -142,7 +175,7 @@ const Dashboard = () => {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{kpiData?.leadsAtendidos || 0}</div>
+              <div className="text-2xl font-bold">{metrics.leads}</div>
               <p className="text-xs text-muted-foreground">Total no período</p>
             </CardContent>
           </Card>
@@ -153,10 +186,8 @@ const Dashboard = () => {
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{kpiData?.reunioesAgendadas || 0}</div>
-              <p className="text-xs text-muted-foreground">
-                {kpiData?.taxaConversaoReuniao}% de conversão
-              </p>
+              <div className="text-2xl font-bold">{metrics.meetings}</div>
+              <p className="text-xs text-muted-foreground">{metrics.conversionMeeting}% de conversão (Lead → Reunião)</p>
             </CardContent>
           </Card>
 
@@ -166,10 +197,8 @@ const Dashboard = () => {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{kpiData?.negociosFechados || 0}</div>
-              <p className="text-xs text-muted-foreground">
-                {kpiData?.taxaConversaoNegocio}% de conversão
-              </p>
+              <div className="text-2xl font-bold">{metrics.deals}</div>
+              <p className="text-xs text-muted-foreground">{metrics.conversionDeal}% de conversão (Reunião → Venda)</p>
             </CardContent>
           </Card>
 
@@ -180,62 +209,48 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R$ {(kpiData?.valorTotalNegocios || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                R$ {metrics.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </div>
-              <p className="text-xs text-muted-foreground">Em negócios fechados</p>
+              <p className="text-xs text-muted-foreground">Receita gerada</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Funil de Conversão</CardTitle>
-              <CardDescription>Visualização do pipeline de vendas</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={funnelData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Taxa de Conversão</CardTitle>
-              <CardDescription>Performance de cada etapa do funil</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={conversionData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={(entry) => `${entry.name}: ${entry.value}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {conversionData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Chart - Comparativo Anual */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Performance Anual ({selectedYear})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[350px] w-full">
+              {chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                    <XAxis dataKey="name" className="text-muted-foreground" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis className="text-muted-foreground" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--background))', 
+                        borderColor: 'hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                      itemStyle={{ color: 'hsl(var(--foreground))' }}
+                    />
+                    <Legend />
+                    <Bar dataKey="Leads" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Reuniões" fill="hsl(263, 70%, 50%)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Vendas" fill="hsl(160, 84%, 39%)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground">
+                  Nenhum dado encontrado para {selectedYear}.
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

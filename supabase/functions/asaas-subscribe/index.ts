@@ -39,7 +39,8 @@ serve(async (req) => {
     console.log('[Asaas Subscribe] Authenticated user:', user.id);
 
     // Get request body
-    const { plano_id } = await req.json();
+    // Ajuste: extraindo também o creditCardToken caso venha do front
+    const { plano_id, creditCardToken } = await req.json();
     if (!plano_id) {
       throw new Error('plano_id is required');
     }
@@ -149,6 +150,16 @@ serve(async (req) => {
       }
     }
 
+    // --- INÍCIO DO AJUSTE SOLICITADO ---
+
+    // Lógica para calcular o próximo dia 01
+    const today = new Date();
+    // Cria data para o dia 1 do próximo mês (mês atual + 1)
+    const nextDue = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    
+    // Formatar para YYYY-MM-DD
+    const nextDueDate = nextDue.toISOString().split('T')[0];
+
     // Create subscription in Asaas
     console.log('[Asaas Subscribe] Creating subscription...');
     
@@ -160,13 +171,16 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         customer: asaasCustomerId,
-        billingType: 'UNDEFINED', // Let user choose payment method
+        billingType: 'CREDIT_CARD', // Força pagamento via cartão
         value: plano.preco_mensal,
-        nextDueDate: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0], // Tomorrow
+        nextDueDate: nextDueDate, // Força vencimento no dia 01
         cycle: 'MONTHLY',
-        description: `Assinatura ${plano.nome} - AdvAI Portal`,
+        description: `Assinatura ${plano.nome} - AdvAI Portal (Ciclo Mensal)`,
+        creditCardToken: creditCardToken // Usa o token extraído do body da requisição
       }),
     });
+
+    // --- FIM DO AJUSTE SOLICITADO ---
 
     if (!subscriptionResponse.ok) {
       const errorData = await subscriptionResponse.text();
@@ -195,7 +209,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true,
         subscriptionId: subscriptionData.id,
-        invoiceUrl: subscriptionData.invoiceUrl,
+        invoiceUrl: subscriptionData.invoiceUrl, // URL para o usuário digitar o cartão se não enviou token
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

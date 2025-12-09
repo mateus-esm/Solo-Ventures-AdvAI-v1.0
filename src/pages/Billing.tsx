@@ -9,8 +9,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Zap, TrendingUp, Loader2, RefreshCcw, MessageCircle, CreditCard, QrCode, Copy, Users, History, FileText, CheckCircle2, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,7 @@ interface CreditData {
   totalCredits?: number;
   planLimit?: number;
   extraCredits?: number;
+  planName?: string;
   periodo: string;
 }
 
@@ -75,29 +76,26 @@ const Billing = () => {
     try {
       setLoading(true);
       
-      // 1. Buscar Créditos com Filtro de Data
       const m = month || filterMonth;
       const y = year || filterYear;
-      
-      console.log(`Buscando créditos para: ${m}/${y}`);
 
+      // 1. Créditos (Passando data para API)
       const { data: creditResponse, error: creditError } = await supabase.functions.invoke('fetch-gpt-credits', {
-        headers: {}, 
-        // Passando parametros na URL query string
-        method: 'GET', // ou POST dependendo de como sua edge function espera, vou assumir GET com query params ou POST com body
-        body: JSON.stringify({ month: m, year: y }) // Assumindo que atualizou fetch-gpt-credits para ler body
+        body: { month: m, year: y } // Envia filtro para o backend
       });
       
-      // Se sua fetch-gpt-credits usa GET com query params, use essa linha:
-      // const { data: creditResponse } = await supabase.functions.invoke(`fetch-gpt-credits?month=${m}&year=${y}`);
+      if (creditError) throw creditError;
+      setCreditData(creditResponse);
 
-      if (creditResponse) setCreditData(creditResponse);
-
-      // 2. Perfil e Plano (apenas na carga inicial ou se precisar)
+      // 2. Perfil e Plano
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: profile } = await supabase.from('profiles').select('equipe_id').eq('user_id', user.id).single();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('equipe_id')
+        .eq('user_id', user.id)
+        .single();
 
       if (profile?.equipe_id) {
         const { data: equipe } = await supabase
@@ -106,23 +104,34 @@ const Billing = () => {
           .eq('id', profile.equipe_id)
           .single();
 
-        if (equipe?.planos) setPlano(equipe.planos as unknown as Plano);
+        if (equipe?.planos) {
+          setPlano(equipe.planos as unknown as Plano);
+        }
 
-        // Histórico
-        const { data: txData } = await supabase.from('transacoes').select('*').eq('equipe_id', profile.equipe_id).order('data_transacao', { ascending: false }).limit(10);
+        // 3. Histórico
+        const { data: txData } = await supabase
+          .from('transacoes')
+          .select('*')
+          .eq('equipe_id', profile.equipe_id)
+          .order('data_transacao', { ascending: false })
+          .limit(10);
         if (txData) setTransacoes(txData);
 
-        const { data: consData } = await supabase.from('consumo_creditos').select('*').eq('equipe_id', profile.equipe_id).order('periodo', { ascending: false }).limit(12);
+        const { data: consData } = await supabase
+          .from('consumo_creditos')
+          .select('*')
+          .eq('equipe_id', profile.equipe_id)
+          .order('periodo', { ascending: false })
+          .limit(12);
         if (consData) setHistoricoConsumo(consData);
       }
     } catch (error: any) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching billing data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Handlers
   const handleFilterChange = (type: 'month' | 'year', value: string) => {
     if (type === 'month') {
       setFilterMonth(value);
@@ -133,7 +142,7 @@ const Billing = () => {
     }
   };
 
-  const handleRechargeWhatsApp = () => {
+  const handleRecharge = () => {
     const totalCost = (selectedCredits / 500) * 40;
     const message = `Gostaria de recarregar ${selectedCredits.toLocaleString()} créditos (R$ ${totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`;
     window.open(`https://wa.me/5585996487923?text=${encodeURIComponent(message)}`, '_blank');
@@ -185,15 +194,15 @@ const Billing = () => {
         },
         creditCardHolderInfo: {
             name: cardData.holderName,
-            email: "financeiro@cliente.com",
-            cpfCnpj: "00000000000", // Deveria vir do perfil
+            email: "financeiro@cliente.com", 
+            cpfCnpj: "00000000000",
             postalCode: "00000000",
             addressNumber: "0",
             phone: "00000000000"
         }
       }
     });
-    if (error || !data.creditCardToken) throw new Error(data?.error || "Erro ao tokenizar cartão");
+    if (error || !data.creditCardToken) throw new Error(data?.error || "Erro ao processar cartão");
     return data.creditCardToken;
   };
 
@@ -202,25 +211,22 @@ const Billing = () => {
     setProcessing(true);
     try {
       const token = await tokenizeCard();
-      
       if (pendingAction?.type === 'buy_credits') {
         const totalCost = (pendingAction.payload.credits / 500) * 40;
         await supabase.functions.invoke('asaas-buy-credits', {
           body: { amount: totalCost, paymentMethod: 'CREDIT_CARD', credits: pendingAction.payload.credits, creditCardToken: token }
         });
-        toast({ title: "Sucesso!", description: "Créditos comprados com sucesso." });
-      } 
-      else if (pendingAction?.type === 'upgrade_plan') {
+        toast({ title: "Sucesso!", description: "Créditos comprados." });
+      } else if (pendingAction?.type === 'upgrade_plan') {
         await supabase.functions.invoke('asaas-subscribe', {
           body: { plano_id: pendingAction.payload.planoId, creditCardToken: token }
         });
-        toast({ title: "Assinatura Ativa!", description: "Plano configurado para cobrança mensal no cartão." });
+        toast({ title: "Sucesso!", description: "Assinatura configurada." });
       }
-
       setCardDialogOpen(false);
       fetchCredits();
     } catch (error: any) {
-      toast({ title: "Erro no Pagamento", description: error.message, variant: "destructive" });
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
     } finally {
       setProcessing(false);
       setPendingAction(null);
@@ -256,7 +262,7 @@ const Billing = () => {
 
           <TabsContent value="overview" className="space-y-6">
             
-            {/* 1. PLANO ATUAL */}
+            {/* PLANO ATUAL */}
             {plano && (
               <Card>
                 <CardHeader>
@@ -268,19 +274,27 @@ const Billing = () => {
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div><p className="text-sm text-muted-foreground">Valor Mensal</p><p className="text-2xl font-bold">R$ {plano.preco_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
-                    <div><p className="text-sm text-muted-foreground">Limite</p><p className="text-2xl font-bold">{plano.limite_creditos.toLocaleString()}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Limite de Créditos</p><p className="text-2xl font-bold">{plano.limite_creditos.toLocaleString()}</p></div>
                     <div><p className="text-sm text-muted-foreground">Usuários</p><p className="text-2xl font-bold">{plano.limite_usuarios || 'Ilimitado'}</p></div>
+                  </div>
+                  <div className="border-t pt-4">
+                    <p className="text-sm font-semibold mb-2">Funcionalidades:</p>
+                    <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {plano.funcionalidades?.map((func, index) => (
+                        <li key={index} className="text-sm text-muted-foreground flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" />{func}</li>
+                      ))}
+                    </ul>
                   </div>
                 </CardContent>
               </Card>
             )}
 
-            {/* 2. FILTRO DE DATA E CONSUMO */}
+            {/* SELETOR DE MÊS (Para conferir o consumo 788 vs 1108) */}
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Consumo de Créditos</h2>
               <div className="flex gap-2">
                 <Select value={filterMonth} onValueChange={(v) => handleFilterChange('month', v)}>
-                  <SelectTrigger className="w-[120px]"><SelectValue placeholder="Mês" /></SelectTrigger>
+                  <SelectTrigger className="w-[140px]"><SelectValue placeholder="Mês" /></SelectTrigger>
                   <SelectContent>
                     {Array.from({length: 12}, (_, i) => i + 1).map(m => (
                       <SelectItem key={m} value={m.toString()}>{new Date(0, m-1).toLocaleString('pt-BR', {month: 'long'})}</SelectItem>
@@ -297,26 +311,27 @@ const Billing = () => {
               </div>
             </div>
 
+            {/* MÉTRICAS DE CONSUMO */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Consumo ({creditData?.periodo})</CardTitle></CardHeader><CardContent><div className="text-3xl font-bold text-primary">{creditData?.creditsSpent || 0}</div></CardContent></Card>
               <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Limite Plano</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{creditData?.planLimit || 0}</div></CardContent></Card>
               <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Créditos Avulsos</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{creditData?.extraCredits || 0}</div></CardContent></Card>
-              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Saldo Restante</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">{creditData?.creditsBalance || 0}</div></CardContent></Card>
+              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Utilizado ({creditData?.periodo})</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-primary">{creditData?.creditsSpent || 0}</div></CardContent></Card>
+              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Disponível</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">{creditData?.creditsBalance || 0}</div></CardContent></Card>
             </div>
 
-            {/* Barra de Progresso */}
+            {/* PROGRESSO */}
             <Card>
               <CardContent className="pt-6">
                 <div className="space-y-2">
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Utilização do Plano</span><span className="font-medium">{usagePercentage.toFixed(1)}%</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Utilizado</span><span className="font-medium">{creditData?.creditsSpent || 0} / {totalCredits}</span></div>
                   <Progress value={usagePercentage} className="h-3" />
                 </div>
               </CardContent>
             </Card>
 
-            {/* 3. RECARGA DE CRÉDITOS */}
-            <Card className="border-primary/20">
-              <CardHeader><CardTitle>Recarga de Créditos</CardTitle><CardDescription>Precisa de mais créditos agora?</CardDescription></CardHeader>
+            {/* RECARGA */}
+            <Card>
+              <CardHeader><CardTitle>Recarga de Créditos</CardTitle><CardDescription>Adicione créditos extras</CardDescription></CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-4">
                   <div className="flex justify-between"><label className="text-sm font-medium">Quantidade</label><span className="text-2xl font-bold text-primary">{selectedCredits.toLocaleString()}</span></div>
@@ -336,26 +351,21 @@ const Billing = () => {
                 <div className="border-t pt-4 flex justify-between items-center">
                   <div><span className="text-sm text-muted-foreground">Total</span><p className="text-2xl font-bold">R$ {((selectedCredits / 500) * 40).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleRechargeWhatsApp}><MessageCircle className="h-4 w-4 mr-2"/> WhatsApp</Button>
+                    <Button variant="outline" onClick={handleRecharge}><MessageCircle className="h-4 w-4 mr-2"/> WhatsApp</Button>
                     <Button onClick={initiatePurchase} disabled={processing}>{processing ? <Loader2 className="animate-spin" /> : 'Comprar Agora'}</Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* 4. PLANOS (DESIGN RICO) */}
+            {/* PLANOS LISTA */}
             <div className="space-y-4 pt-4 border-t">
               <h2 className="text-2xl font-bold">Mudar de Plano</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 
-                {/* Starter */}
                 <Card className="border-border hover:border-primary transition-all">
-                  <CardHeader>
-                    <CardTitle className="text-xl">Solo Starter</CardTitle>
-                    <CardDescription>Para quem está começando</CardDescription>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Solo Starter</CardTitle><CardDescription>R$ 150/mês</CardDescription></CardHeader>
                   <CardContent className="space-y-4">
-                    <div><p className="text-4xl font-bold text-foreground">R$ 150<span className="text-lg font-normal text-muted-foreground">/mês</span></p></div>
                     <ul className="space-y-2 text-sm text-muted-foreground">
                       <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> 1.000 Créditos</li>
                       <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Até 3 Usuários</li>
@@ -365,33 +375,22 @@ const Billing = () => {
                   </CardContent>
                 </Card>
 
-                {/* Scale */}
-                <Card className="relative border-2 border-primary shadow-lg transform scale-105 z-10">
+                <Card className="border-primary border-2 shadow-lg transform scale-105 z-10">
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2"><Badge className="bg-primary text-white">Mais Popular</Badge></div>
-                  <CardHeader>
-                    <CardTitle className="text-xl">Solo Scale</CardTitle>
-                    <CardDescription>Para escritórios em crescimento</CardDescription>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Solo Scale</CardTitle><CardDescription>R$ 400/mês</CardDescription></CardHeader>
                   <CardContent className="space-y-4">
-                    <div><p className="text-4xl font-bold text-foreground">R$ 400<span className="text-lg font-normal text-muted-foreground">/mês</span></p></div>
                     <ul className="space-y-2 text-sm text-muted-foreground">
                       <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> 3.000 Créditos</li>
                       <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Até 5 Usuários</li>
                       <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Dashboard Completo</li>
-                      <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Gestão Financeira</li>
                     </ul>
                     <Button className="w-full mt-4" onClick={() => initiatePlanUpgrade(2)}>Assinar Scale</Button>
                   </CardContent>
                 </Card>
 
-                {/* Pro */}
                 <Card className="border-border hover:border-primary transition-all">
-                  <CardHeader>
-                    <CardTitle className="text-xl">Solo Pro</CardTitle>
-                    <CardDescription>Operação robusta</CardDescription>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Solo Pro</CardTitle><CardDescription>R$ 1.000/mês</CardDescription></CardHeader>
                   <CardContent className="space-y-4">
-                    <div><p className="text-4xl font-bold text-foreground">R$ 1.000<span className="text-lg font-normal text-muted-foreground">/mês</span></p></div>
                     <ul className="space-y-2 text-sm text-muted-foreground">
                       <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> 10.000 Créditos</li>
                       <li className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-primary"/> Usuários Ilimitados</li>
@@ -405,6 +404,7 @@ const Billing = () => {
             </div>
           </TabsContent>
 
+          {/* ABA DE HISTÓRICO */}
           <TabsContent value="history" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>

@@ -28,7 +28,7 @@ serve(async (req) => {
     if (!equipe?.jestor_api_token) throw new Error('Jestor API token not configured');
 
     // 1. Definição do Período (Coorte)
-    let reqBody = {};
+    let reqBody: { month?: string; year?: string } = {};
     try { reqBody = await req.json(); } catch {}
     
     const now = new Date();

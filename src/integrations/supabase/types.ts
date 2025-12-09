@@ -238,6 +238,47 @@ export type Database = {
           },
         ]
       }
+      transacoes: {
+        Row: {
+          data_transacao: string | null
+          descricao: string | null
+          equipe_id: string
+          gateway_id: string | null
+          id: string
+          status: string | null
+          tipo: string
+          valor: number
+        }
+        Insert: {
+          data_transacao?: string | null
+          descricao?: string | null
+          equipe_id: string
+          gateway_id?: string | null
+          id?: string
+          status?: string | null
+          tipo: string
+          valor: number
+        }
+        Update: {
+          data_transacao?: string | null
+          descricao?: string | null
+          equipe_id?: string
+          gateway_id?: string | null
+          id?: string
+          status?: string | null
+          tipo?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transacoes_equipe_id_fkey"
+            columns: ["equipe_id"]
+            isOneToOne: false
+            referencedRelation: "equipes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null

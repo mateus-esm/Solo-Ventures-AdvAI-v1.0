@@ -98,12 +98,12 @@ const Billing = () => {
         // 3. NOVO: Buscar Transações
         const { data: transacoesData } = await supabase
           .from('transacoes')
-          .select('*')
+          .select('id, tipo, valor, status, descricao, data_transacao')
           .eq('equipe_id', profile.equipe_id)
           .order('data_transacao', { ascending: false })
           .limit(10);
         
-        if (transacoesData) setTransacoes(transacoesData);
+        if (transacoesData) setTransacoes(transacoesData as Transacao[]);
 
         // 4. NOVO: Buscar Histórico de Consumo
         const { data: consumoData } = await supabase

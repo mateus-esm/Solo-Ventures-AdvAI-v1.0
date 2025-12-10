@@ -13,6 +13,8 @@ serve(async (req) => {
 
   try {
     const asaasApiKey = Deno.env.get('ASAAS_API_KEY');
+    if (!asaasApiKey) throw new Error('ASAAS_API_KEY not configured');
+    
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -33,14 +35,14 @@ serve(async (req) => {
     // 1. Garantir Cliente
     let asaasCustomerId = equipe.asaas_customer_id;
     if (!asaasCustomerId) {
-       const searchRes = await fetch(`${ASAAS_API_URL}/customers?email=${profile.email}`, { headers: { 'access_token': asaasApiKey } });
+       const searchRes = await fetch(`${ASAAS_API_URL}/customers?email=${profile.email}`, { headers: { 'access_token': asaasApiKey! } });
        const searchData = await searchRes.json();
        if (searchData.data?.length > 0) {
            asaasCustomerId = searchData.data[0].id;
        } else {
            const newRes = await fetch(`${ASAAS_API_URL}/customers`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
+               headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey! },
               body: JSON.stringify({ name: equipe.nome_cliente, email: profile.email, cpfCnpj: profile.cpf })
            });
            const newCus = await newRes.json();
@@ -71,7 +73,7 @@ serve(async (req) => {
 
     const paymentRes = await fetch(`${ASAAS_API_URL}/payments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
+      headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey! },
       body: JSON.stringify(paymentBody)
     });
 

@@ -32,15 +32,15 @@ serve(async (req) => {
     // 1. Garantir Cliente
     let customerId = equipe.asaas_customer_id;
     if (!customerId) {
-        const searchRes = await fetch(`${ASAAS_API_URL}/customers?email=${profile.email}`, { headers: { 'access_token': asaasApiKey } });
+        const searchRes = await fetch(`${ASAAS_API_URL}/customers?email=${profile.email}`, { headers: { 'access_token': asaasApiKey! } });
         const searchData = await searchRes.json();
         if (searchData.data?.length > 0) {
             customerId = searchData.data[0].id;
         } else {
             const createRes = await fetch(`${ASAAS_API_URL}/customers`, {
                 method: 'POST', 
-                headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
-                body: JSON.stringify({ name: equipe.nome_cliente, email: profile.email, cpfCnpj: profile.cpf })
+        headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey! },
+        body: JSON.stringify({ name: equipe.nome_cliente, email: profile.email, cpfCnpj: profile.cpf })
             });
             const newCus = await createRes.json();
             customerId = newCus.id;
@@ -61,7 +61,7 @@ serve(async (req) => {
 
     const subRes = await fetch(`${ASAAS_API_URL}/subscriptions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
+        headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey! },
         body: JSON.stringify(subBody)
     });
     const subData = await subRes.json();
@@ -76,7 +76,7 @@ serve(async (req) => {
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         const paymentsRes = await fetch(`${ASAAS_API_URL}/subscriptions/${subData.id}/payments?limit=1`, {
-            headers: { 'access_token': asaasApiKey }
+            headers: { 'access_token': asaasApiKey! }
         });
         const paymentsData = await paymentsRes.json();
         

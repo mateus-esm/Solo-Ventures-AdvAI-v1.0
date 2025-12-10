@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.80.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,15 +13,14 @@ serve(async (req) => {
 
   try {
     const asaasApiKey = Deno.env.get('ASAAS_API_KEY');
-    
-    // Auth: Para verificar usuário logado
+    if (!asaasApiKey) throw new Error('ASAAS_API_KEY not configured');
+
     const supabaseAuth = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
 
-    // Admin: Para inserir transação (bypass RLS)
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -32,32 +31,29 @@ serve(async (req) => {
 
     const { amount, paymentMethod, credits, creditCardToken } = await req.json();
 
-    // Buscar dados
     const { data: profile } = await supabaseAuth.from('profiles').select('equipe_id, nome_completo, email, cpf').eq('user_id', user.id).single();
-    if (!profile?.cpf) throw new Error('CPF obrigatório. Atualize seu perfil.');
+    if (!profile) throw new Error('Perfil não encontrado');
+    if (!profile.cpf) throw new Error('CPF obrigatório no perfil.');
 
     const { data: equipe } = await supabaseAuth.from('equipes').select('id, nome_cliente, asaas_customer_id').eq('id', profile.equipe_id).single();
+    if (!equipe) throw new Error('Equipe não encontrada.');
 
-    // 1. Garantir Cliente no Asaas
+    // 1. Garantir Cliente
     let asaasCustomerId = equipe.asaas_customer_id;
     if (!asaasCustomerId) {
-       console.log('[Buy Credits] Criando cliente Asaas...');
        const newCustomerRes = await fetch(`${ASAAS_API_URL}/customers`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
           body: JSON.stringify({ name: equipe.nome_cliente, email: profile.email, cpfCnpj: profile.cpf })
        });
        const newCustomer = await newCustomerRes.json();
-       if (newCustomer.id) {
-           asaasCustomerId = newCustomer.id;
-           await supabaseAdmin.from('equipes').update({ asaas_customer_id: asaasCustomerId }).eq('id', equipe.id);
-       } else {
-           throw new Error('Falha ao criar cliente Asaas');
-       }
+       if (!newCustomer.id) throw new Error(`Falha ao criar cliente: ${JSON.stringify(newCustomer.errors)}`);
+       
+       asaasCustomerId = newCustomer.id;
+       await supabaseAdmin.from('equipes').update({ asaas_customer_id: asaasCustomerId }).eq('id', equipe.id);
     }
 
-    // 2. CRIAR TRANSAÇÃO PENDENTE (O VÍNCULO)
-    console.log('[Buy Credits] Criando transação pendente...');
+    // 2. Transação Pendente
     const { data: transacao, error: txError } = await supabaseAdmin
       .from('transacoes')
       .insert({
@@ -66,14 +62,14 @@ serve(async (req) => {
         valor: amount,
         status: 'pendente',
         descricao: `Compra de ${credits} créditos AdvAI`,
-        metadata: { creditos: credits } // <--- Webhook lê isso aqui
+        metadata: { creditos: credits } 
       })
       .select()
       .single();
 
-    if (txError) throw new Error(`Erro ao criar transação: ${txError.message}`);
+    if (txError || !transacao) throw new Error(`Erro ao criar transação: ${txError?.message}`);
 
-    // 3. CRIAR COBRANÇA NO ASAAS
+    // 3. Cobrança Asaas
     const billingType = paymentMethod === 'PIX' ? 'PIX' : 'CREDIT_CARD';
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 1);
@@ -84,7 +80,7 @@ serve(async (req) => {
       value: amount,
       dueDate: dueDate.toISOString().split('T')[0],
       description: `Recarga de ${credits} créditos AdvAI`,
-      externalReference: `credits_${transacao.id}`, // <--- VÍNCULO COM O ID REAL
+      externalReference: `credits_${transacao.id}`, 
     };
 
     if (billingType === 'CREDIT_CARD' && creditCardToken) {
@@ -100,16 +96,15 @@ serve(async (req) => {
     const paymentData = await paymentRes.json();
 
     if (!paymentRes.ok) {
-        // Cancela a transação se o Asaas falhar
         await supabaseAdmin.from('transacoes').update({ status: 'falha' }).eq('id', transacao.id);
         throw new Error(paymentData.errors?.[0]?.description || 'Erro Asaas');
     }
 
-    // Retorno
     const response: any = {
       success: true,
       paymentId: paymentData.id,
-      invoiceUrl: paymentData.invoiceUrl
+      invoiceUrl: paymentData.invoiceUrl,
+      transactionId: transacao.id
     };
 
     if (billingType === 'PIX') {
@@ -126,7 +121,6 @@ serve(async (req) => {
     return new Response(JSON.stringify(response), { headers: corsHeaders });
 
   } catch (error: any) {
-    console.error('[Buy Credits Error]', error);
     return new Response(JSON.stringify({ error: error.message }), { headers: corsHeaders, status: 500 });
   }
 });

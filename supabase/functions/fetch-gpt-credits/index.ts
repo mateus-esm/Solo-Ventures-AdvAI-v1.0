@@ -7,9 +7,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
     const supabaseClient = createClient(
@@ -23,66 +21,78 @@ serve(async (req) => {
 
     if (!user) throw new Error('Unauthorized');
 
-    // 1. Ler Mês/Ano do Body da requisição
     let reqBody: { year?: string; month?: string } = {};
     try { reqBody = await req.json(); } catch {}
     
     const now = new Date();
-    // Se não vier no body, usa o mês atual
     const year = reqBody.year ? parseInt(reqBody.year) : now.getFullYear();
     const month = reqBody.month ? parseInt(reqBody.month) : now.getMonth() + 1;
     const periodo = `${year}-${month.toString().padStart(2, '0')}`;
 
-    console.log(`[GPT Credits] Buscando consumo para: ${periodo}`);
-
+    // 1. Busca perfil e equipe
     const { data: profile } = await supabaseClient.from('profiles').select('equipe_id').eq('user_id', user.id).single();
     if (!profile) throw new Error('Profile not found');
 
+    // CORREÇÃO: Query ajustada para garantir o join correto
     const { data: equipe } = await supabaseClient
       .from('equipes')
-      .select('gpt_maker_agent_id, limite_creditos, creditos_avulsos')
+      .select(`
+        gpt_maker_agent_id, 
+        limite_creditos, 
+        creditos_avulsos, 
+        plano_id, 
+        planos ( limite_creditos )
+      `)
       .eq('id', profile.equipe_id)
       .single();
 
-    if (!equipe?.gpt_maker_agent_id) throw new Error('Agent ID missing');
+    if (!equipe) throw new Error('Equipe não encontrada');
 
-    const gptMakerToken = Deno.env.get('GPT_MAKER_API_TOKEN');
-    
-    // 2. Chamada GPT Maker com Filtro de Data
-    // A API v2 do GPT Maker aceita ?year=YYYY&month=MM para retornar o total exato daquele mês
-    const spentUrl = `https://api.gptmaker.ai/v2/agent/${equipe.gpt_maker_agent_id}/credits-spent?year=${year}&month=${month}`;
-    
-    const spentRes = await fetch(spentUrl, { 
-      headers: { 'Authorization': `Bearer ${gptMakerToken}`, 'Content-Type': 'application/json' } 
-    });
-
-    if (!spentRes.ok) {
-        const errText = await spentRes.text();
-        console.error(`[GPT API Error] ${spentRes.status}: ${errText}`);
-        throw new Error('Failed to fetch from GPT Maker');
+    // 2. Busca consumo no GPT Maker
+    let creditsSpent = 0;
+    if (equipe.gpt_maker_agent_id) {
+        const gptMakerToken = Deno.env.get('GPT_MAKER_API_TOKEN');
+        const spentUrl = `https://api.gptmaker.ai/v2/agent/${equipe.gpt_maker_agent_id}/credits-spent?year=${year}&month=${month}`;
+        
+        try {
+            const spentRes = await fetch(spentUrl, { 
+                headers: { 'Authorization': `Bearer ${gptMakerToken}`, 'Content-Type': 'application/json' } 
+            });
+            if (spentRes.ok) {
+                const spentData = await spentRes.json();
+                creditsSpent = spentData.total || 0;
+            }
+        } catch (e) {
+            console.error("Erro GPT Maker API:", e);
+        }
     }
-    
-    const spentData = await spentRes.json();
-    // O campo 'total' retorna o consumo do período especificado
-    const creditsSpent = spentData.total || 0; 
 
-    // Calculo de saldo (sempre baseado no snapshot atual de limites)
-    const totalCredits = (equipe.limite_creditos || 1000) + (equipe.creditos_avulsos || 0);
+    // CORREÇÃO LÓGICA DE LIMITE
+    // Se equipe.limite_creditos for nulo, pega do plano. Se plano for array (pode acontecer no join), pega o primeiro.
+    let limitePlano = 1000; // Default
+    if (equipe.limite_creditos) {
+        limitePlano = equipe.limite_creditos;
+    } else if (equipe.planos) {
+        // Supabase pode retornar objeto ou array dependendo da versão/config
+        const p = Array.isArray(equipe.planos) ? equipe.planos[0] : equipe.planos;
+        if (p?.limite_creditos) limitePlano = p.limite_creditos;
+    }
+
+    const totalCredits = limitePlano + (equipe.creditos_avulsos || 0);
     const creditsBalance = totalCredits - creditsSpent;
 
-    // Salvar histórico no banco
+    // Atualiza histórico local
     await supabaseClient.from('consumo_creditos').upsert({
       equipe_id: profile.equipe_id, 
       creditos_utilizados: creditsSpent, 
-      periodo, 
-      metadata: spentData // Guarda o JSON bruto para auditoria
+      periodo
     }, { onConflict: 'equipe_id,periodo' });
 
     return new Response(JSON.stringify({
       creditsSpent,
       creditsBalance,
       totalCredits,
-      planLimit: equipe.limite_creditos,
+      planLimit: limitePlano,
       extraCredits: equipe.creditos_avulsos,
       periodo
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

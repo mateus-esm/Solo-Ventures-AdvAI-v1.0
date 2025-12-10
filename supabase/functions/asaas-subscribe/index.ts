@@ -20,7 +20,9 @@ serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) throw new Error('No authorization header');
-    const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace('Bearer ', ''));
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user } } = await supabaseClient.auth.getUser(token);
+    
     if (!user) throw new Error('Unauthorized');
 
     const { plano_id } = await req.json();
@@ -32,28 +34,30 @@ serve(async (req) => {
     // 1. Garantir Cliente
     let customerId = equipe.asaas_customer_id;
     if (!customerId) {
-        const searchRes = await fetch(`${ASAAS_API_URL}/customers?email=${profile.email}`, { headers: { 'access_token': asaasApiKey! } });
+        const searchRes = await fetch(`${ASAAS_API_URL}/customers?email=${profile.email}`, { headers: { 'access_token': asaasApiKey } });
         const searchData = await searchRes.json();
+        
         if (searchData.data?.length > 0) {
             customerId = searchData.data[0].id;
         } else {
             const createRes = await fetch(`${ASAAS_API_URL}/customers`, {
                 method: 'POST', 
-        headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey! },
-        body: JSON.stringify({ name: equipe.nome_cliente, email: profile.email, cpfCnpj: profile.cpf })
+                headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
+                body: JSON.stringify({ name: equipe.nome_cliente, email: profile.email, cpfCnpj: profile.cpf })
             });
             const newCus = await createRes.json();
+            if (!newCus.id) throw new Error("Erro ao criar cliente Asaas: " + JSON.stringify(newCus.errors));
             customerId = newCus.id;
         }
         await supabaseClient.from('equipes').update({ asaas_customer_id: customerId }).eq('id', equipe.id);
     }
 
-    // 2. Criar Assinatura (UNDEFINED = Cliente escolhe método na tela do Asaas)
+    // 2. Criar Assinatura (UNDEFINED permite escolha Pix/Cartão)
     const subBody = {
         customer: customerId,
         billingType: 'UNDEFINED', 
         value: plano.preco_mensal,
-        nextDueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Vence Amanhã
+        nextDueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
         cycle: 'MONTHLY',
         description: `Assinatura ${plano.nome}`,
         externalReference: `sub_${equipe.id}_${plano.id}`
@@ -61,39 +65,33 @@ serve(async (req) => {
 
     const subRes = await fetch(`${ASAAS_API_URL}/subscriptions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey! },
+        headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
         body: JSON.stringify(subBody)
     });
+    
     const subData = await subRes.json();
-    if (!subData.id) throw new Error(JSON.stringify(subData));
+    if (!subData.id) throw new Error("Erro Asaas: " + JSON.stringify(subData.errors));
 
-    // 3. Buscar a Primeira Cobrança com RETRY (Correção do Erro)
+    // 3. (CORREÇÃO) Buscar Link com Retry
     let invoiceUrl = null;
     
-    // Tenta 5 vezes, esperando 1s entre cada tentativa
+    // Tenta 5 vezes (5 segundos)
     for (let i = 0; i < 5; i++) {
-        // Delay de 1 segundo
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Espera 1s
         
         const paymentsRes = await fetch(`${ASAAS_API_URL}/subscriptions/${subData.id}/payments?limit=1`, {
-            headers: { 'access_token': asaasApiKey! }
+            headers: { 'access_token': asaasApiKey }
         });
         const paymentsData = await paymentsRes.json();
         
         if (paymentsData.data && paymentsData.data.length > 0) {
             invoiceUrl = paymentsData.data[0].invoiceUrl;
-            break; // Achou! Sai do loop
+            break; // Achou!
         }
-        console.log(`Tentativa ${i+1}: Cobrança ainda não gerada...`);
     }
 
-    if (!invoiceUrl) {
-        // Fallback: Se não gerou link, mandamos para a lista de assinaturas (menos ideal, mas não trava)
-        // Mas geralmente em 5s o Asaas gera.
-        throw new Error("O Asaas está processando sua assinatura. Verifique seu email em instantes para o link de pagamento.");
-    }
+    if (!invoiceUrl) throw new Error("O Asaas demorou para gerar o link. Tente novamente em instantes.");
 
-    // Atualiza equipe
     await supabaseClient.from('equipes').update({ 
         asaas_subscription_id: subData.id,
         subscription_status: 'pending_payment',

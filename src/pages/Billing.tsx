@@ -29,6 +29,7 @@ interface Transacao {
   status: string;
   descricao: string;
   data_transacao: string;
+  data_pagamento?: string | null;
   invoice_url?: string;
 }
 

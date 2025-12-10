@@ -21,5 +21,6 @@ verify_jwt = false
 [functions.admin-adjust-credits]
 verify_jwt = true
 
+# NOVA CONFIGURAÇÃO ABAIXO:
 [functions.asaas-webhook]
 verify_jwt = false

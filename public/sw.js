@@ -1,5 +1,5 @@
-// Service Worker for AdvAI Portal PWA - Aggressive Cache Clear
-const CACHE_NAME = 'advai-portal-v23-' + Date.now();
+// Service Worker for AdvAI Portal PWA - Fixed Response handling
+const CACHE_NAME = 'advai-portal-v24-sw-fix';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -42,7 +42,13 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   // NEVER cache JS modules
   if (shouldNotCache(event.request.url) || event.request.url.endsWith('.js')) {
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return caches.match(event.request).then(response => {
+          return response || new Response('Network error', { status: 408, statusText: 'Request timeout' });
+        });
+      })
+    );
     return;
   }
 
@@ -58,7 +64,11 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() => {
+        return caches.match(event.request).then(response => {
+          return response || new Response('Network error', { status: 408, statusText: 'Request timeout' });
+        });
+      })
   );
 });
 

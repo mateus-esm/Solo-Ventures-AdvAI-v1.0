@@ -13,102 +13,91 @@ serve(async (req) => {
 
   try {
     const asaasApiKey = Deno.env.get('ASAAS_API_KEY');
-    if (!asaasApiKey) {
-      throw new Error('ASAAS_API_KEY not configured');
-    }
+    
+    // 1. Clientes Supabase
+    // Auth: Para identificar quem está pedindo (segurança)
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+    );
 
-    // Cliente Supabase com permissão de Service Role para atualizar equipe se necessário (criar customer)
-    const supabaseClient = createClient(
+    // Admin: Para criar a transação e atualizar cliente (bypass RLS)
+    const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Verificar usuário autenticado
-    const authHeader = req.headers.get('Authorization')!;
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-
+    // 2. Validação do Usuário
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
     if (authError || !user) throw new Error('Unauthorized');
 
-    // Pegar dados do corpo da requisição
     const { amount, paymentMethod, credits, creditCardToken } = await req.json();
 
-    if (!amount || !paymentMethod || !credits) {
-      throw new Error('Dados incompletos: amount, paymentMethod e credits são obrigatórios');
-    }
-
-    // Buscar perfil e equipe
-    const { data: profile } = await supabaseClient
-      .from('profiles')
-      .select('equipe_id, nome_completo, email, cpf')
-      .eq('user_id', user.id)
-      .single();
-
+    // 3. Buscar Dados do Perfil e Equipe
+    const { data: profile } = await supabaseAuth.from('profiles').select('equipe_id, nome_completo, email, cpf').eq('user_id', user.id).single();
     if (!profile?.cpf) throw new Error('CPF obrigatório no perfil para emitir cobrança.');
 
-    const { data: equipe } = await supabaseClient
-      .from('equipes')
-      .select('id, nome_cliente, asaas_customer_id')
-      .eq('id', profile.equipe_id)
-      .single();
+    const { data: equipe } = await supabaseAuth.from('equipes').select('id, nome_cliente, asaas_customer_id').eq('id', profile.equipe_id).single();
 
-    if (!equipe) throw new Error('Equipe não encontrada.');
-
-    // 1. Garantir Cliente no Asaas
+    // 4. Garantir Cliente no Asaas
     let asaasCustomerId = equipe.asaas_customer_id;
-    
     if (!asaasCustomerId) {
-      console.log('[Asaas Buy] Criando cliente no Asaas...');
-      const customerRes = await fetch(`${ASAAS_API_URL}/customers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
-        body: JSON.stringify({
-          name: equipe.nome_cliente,
-          email: profile.email,
-          cpfCnpj: profile.cpf,
-          externalReference: equipe.id
-        })
-      });
-
-      const newCustomer = await customerRes.json();
-      
-      if (!newCustomer.id) {
-         console.error('Erro Asaas Customer:', newCustomer);
-         throw new Error('Falha ao criar cliente no Asaas: ' + JSON.stringify(newCustomer.errors));
-      }
-
-      asaasCustomerId = newCustomer.id;
-      
-      // Salva o ID do cliente na tabela equipes
-      await supabaseClient
-        .from('equipes')
-        .update({ asaas_customer_id: asaasCustomerId })
-        .eq('id', equipe.id);
+       console.log('[Asaas Buy] Criando cliente no Asaas...');
+       const newCustomerRes = await fetch(`${ASAAS_API_URL}/customers`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
+          body: JSON.stringify({ name: equipe.nome_cliente, email: profile.email, cpfCnpj: profile.cpf })
+       });
+       const newCustomer = await newCustomerRes.json();
+       
+       if (newCustomer.id) {
+           asaasCustomerId = newCustomer.id;
+           await supabaseAdmin.from('equipes').update({ asaas_customer_id: asaasCustomerId }).eq('id', equipe.id);
+       } else {
+           throw new Error(`Erro ao criar cliente Asaas: ${JSON.stringify(newCustomer.errors)}`);
+       }
     }
 
-    // 2. Criar Cobrança no Asaas
-    console.log(`[Asaas Buy] Criando cobrança de ${credits} créditos...`);
-    
+    // 5. CRIAR TRANSAÇÃO PENDENTE (CRÍTICO)
+    // Aqui salvamos o "pedido" antes de cobrar. O metadata guarda quantos créditos liberar.
+    console.log('[Asaas Buy] Registrando transação pendente...');
+    const { data: transacao, error: txError } = await supabaseAdmin
+      .from('transacoes')
+      .insert({
+        equipe_id: equipe.id,
+        tipo: 'compra_creditos',
+        valor: amount,
+        status: 'pendente',
+        descricao: `Compra de ${credits} créditos AdvAI`,
+        metadata: { creditos: credits } 
+      })
+      .select()
+      .single();
+
+    if (txError) throw new Error(`Erro no banco de dados: ${txError.message}`);
+
+    // 6. CRIAR COBRANÇA NO ASAAS
     const billingType = paymentMethod === 'PIX' ? 'PIX' : 'CREDIT_CARD';
     const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 1); // Vence amanhã para dar tempo de pagar
+    dueDate.setDate(dueDate.getDate() + 1); // Vence amanhã
 
     const paymentBody: any = {
       customer: asaasCustomerId,
       billingType: billingType,
       value: amount,
       dueDate: dueDate.toISOString().split('T')[0],
-      description: `Compra de ${credits} créditos AdvAI`,
-      // AQUI ESTÁ O VÍNCULO: Passamos "cred_" + a quantidade. 
-      // O Webhook vai ler isso para adicionar os créditos corretos.
-      externalReference: `cred_${credits}` 
+      description: `Recarga de ${credits} créditos AdvAI`,
+      // O VÍNCULO MÁGICO: Enviamos o ID da transação no externalReference
+      // Quando o webhook receber o pagamento, ele lerá "credits_ID" e saberá qual transação atualizar
+      externalReference: `credits_${transacao.id}`, 
     };
 
-    // Se for cartão e veio o token, adiciona
     if (billingType === 'CREDIT_CARD' && creditCardToken) {
-      paymentBody.creditCardToken = creditCardToken;
+        paymentBody.creditCardToken = creditCardToken;
     }
 
+    console.log('[Asaas Buy] Enviando cobrança...');
     const paymentRes = await fetch(`${ASAAS_API_URL}/payments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
@@ -118,28 +107,26 @@ serve(async (req) => {
     const paymentData = await paymentRes.json();
 
     if (!paymentRes.ok) {
-      console.error('Erro Pagamento Asaas:', paymentData);
-      throw new Error(paymentData.errors?.[0]?.description || 'Erro ao criar pagamento no Asaas');
+        // Se falhou no Asaas, cancelamos a transação no banco para não ficar "pendente" para sempre
+        await supabaseAdmin.from('transacoes').update({ status: 'falha' }).eq('id', transacao.id);
+        throw new Error(paymentData.errors?.[0]?.description || 'Erro ao criar pagamento no Asaas');
     }
 
-    // Preparar resposta
+    // 7. Retorno para o Frontend
     const response: any = {
       success: true,
       paymentId: paymentData.id,
-      invoiceUrl: paymentData.invoiceUrl
+      invoiceUrl: paymentData.invoiceUrl,
+      transactionId: transacao.id
     };
 
-    // Se for PIX, buscar o QR Code
     if (billingType === 'PIX') {
-      const pixRes = await fetch(`${ASAAS_API_URL}/payments/${paymentData.id}/pixQrCode`, {
-        headers: { 'access_token': asaasApiKey }
-      });
-      
-      if (pixRes.ok) {
-        const pixJson = await pixRes.json();
-        response.pixQrCode = pixJson.encodedImage;
-        response.pixCopyPaste = pixJson.payload;
-      }
+       const pixRes = await fetch(`${ASAAS_API_URL}/payments/${paymentData.id}/pixQrCode`, {
+         headers: { 'access_token': asaasApiKey }
+       });
+       const pixJson = await pixRes.json();
+       response.pixQrCode = pixJson.encodedImage;
+       response.pixCopyPaste = pixJson.payload;
     }
 
     return new Response(JSON.stringify(response), { headers: corsHeaders });

@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    // Usa Service Role para poder atualizar tabelas protegidas
+    // Usa Service Role para atualizar tabelas protegidas e creditar saldo
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -21,17 +21,17 @@ serve(async (req) => {
 
     console.log(`[Webhook] Evento: ${event} | Payment ID: ${payment.id} | Ref: ${payment.externalReference}`);
 
-    // Só processa se for pagamento confirmado ou recebido
+    // Processar apenas pagamentos confirmados/recebidos
     if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
       
       const externalRef = payment.externalReference || '';
       
-      // --- CENÁRIO 1: COMPRA DE CRÉDITOS AVULSOS ---
-      // (Identificado pelo prefixo "credits_" que colocamos no buy-credits)
+      // --- CENÁRIO A: CRÉDITOS AVULSOS (Ref começa com "credits_") ---
       if (externalRef.startsWith('credits_')) {
+          // Extrai o ID da transação criada no buy-credits
           const transacaoId = externalRef.split('credits_')[1];
           
-          // 1. Busca a transação original para saber quantos créditos liberar
+          // 1. Busca a transação para saber quantos créditos liberar
           const { data: transacao, error: txError } = await supabaseClient
             .from('transacoes')
             .select('equipe_id, metadata, status')
@@ -40,18 +40,16 @@ serve(async (req) => {
 
           if (txError || !transacao) {
              console.error('Transação não encontrada:', transacaoId);
-             // Retorna 200 para o Asaas parar de tentar, mas loga o erro
+             // Retorna 200 para o Asaas parar de tentar (erro nosso de lógica)
              return new Response(JSON.stringify({ error: 'Transaction not found' }), { status: 200 });
           }
 
-          // Evita processar duas vezes
           if (transacao.status === 'pago') {
              return new Response(JSON.stringify({ received: true, message: 'Already processed' }));
           }
 
-          // 2. Incrementa o saldo da equipe
+          // 2. Libera os créditos na equipe
           const qtdCreditos = transacao.metadata?.creditos || 0;
-          
           if (qtdCreditos > 0) {
               const { data: equipe } = await supabaseClient
                   .from('equipes')
@@ -69,7 +67,7 @@ serve(async (req) => {
               console.log(`[Webhook] +${qtdCreditos} créditos para equipe ${transacao.equipe_id}`);
           }
 
-          // 3. Marca transação como PAGA e salva dados do gateway
+          // 3. Atualiza transação como PAGO e salva dados do Asaas
           await supabaseClient
             .from('transacoes')
             .update({
@@ -82,10 +80,8 @@ serve(async (req) => {
             .eq('id', transacaoId);
       } 
       
-      // --- CENÁRIO 2: PAGAMENTO DE ASSINATURA ---
-      // (Identificado pela presença do campo subscription)
+      // --- CENÁRIO B: ASSINATURA (Tem campo subscription) ---
       else if (payment.subscription) {
-          // Busca equipe pelo Customer ID do Asaas
           const { data: equipe } = await supabaseClient
               .from('equipes')
               .select('id')
@@ -93,7 +89,7 @@ serve(async (req) => {
               .single();
               
           if (equipe) {
-              // Renova o vencimento para o próximo mês (Dia 01)
+              // Renova status e data de vencimento
               const nextDue = new Date();
               nextDue.setMonth(nextDue.getMonth() + 1);
               nextDue.setDate(1); 
@@ -103,7 +99,7 @@ serve(async (req) => {
                   next_due_date: nextDue.toISOString().split('T')[0]
               }).eq('id', equipe.id);
 
-              // Cria registro histórico do pagamento da assinatura
+              // Cria registro histórico
               await supabaseClient.from('transacoes').insert({
                   equipe_id: equipe.id,
                   tipo: 'assinatura',
@@ -115,12 +111,10 @@ serve(async (req) => {
                   data_pagamento: new Date().toISOString(),
                   descricao: payment.description || 'Renovação de Assinatura'
               });
-              
-              console.log(`[Webhook] Assinatura renovada para equipe ${equipe.id}`);
           }
       }
     } 
-    // --- CENÁRIO 3: PAGAMENTO ATRASADO ---
+    // --- CENÁRIO C: PAGAMENTO ATRASADO ---
     else if (event === 'PAYMENT_OVERDUE') {
         if (payment.subscription) {
              const { data: equipe } = await supabaseClient

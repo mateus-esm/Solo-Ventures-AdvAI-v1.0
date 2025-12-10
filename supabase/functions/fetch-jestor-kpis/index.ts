@@ -30,28 +30,28 @@ serve(async (req) => {
     const { data: equipe } = await supabaseClient.from('equipes').select('jestor_api_token').eq('id', profile.equipe_id).single();
     if (!equipe?.jestor_api_token) throw new Error('Jestor API token not configured');
 
-    console.log('[Jestor Sync] Iniciando sincronização com OFFSET...');
+    console.log('[Jestor Sync] Iniciando sincronização completa...');
 
     const jestorUrl = 'https://mateussmaia.api.jestor.com/object/list';
     let allLeads: any[] = [];
     let offset = 0;
-    const limit = 100; // Limite por batch
-    let hasMore = true;
-    const maxIterations = 20; // Proteção: máximo 2000 leads
+    const batchSize = 50; // Jestor retorna ~20 por vez, mas pedimos mais para garantir
+    const maxIterations = 50; // Proteção: máximo 2500 leads
     let iterations = 0;
+    let lastBatchSize = -1;
 
-    // --- 1. LOOP DE PAGINAÇÃO COM OFFSET (Jestor API pattern) ---
-    while (hasMore && iterations < maxIterations) {
+    // --- 1. LOOP DE PAGINAÇÃO - CONTINUA ATÉ RECEBER 0 REGISTROS ---
+    while (iterations < maxIterations) {
         iterations++;
-        console.log(`[Jestor Sync] Buscando batch ${iterations}, offset=${offset}...`);
+        console.log(`[Jestor Sync] Batch ${iterations}, offset=${offset}...`);
         
         const bodyJestor = {
             object_type: 'o_apnte00i6bwtdfd2rjc',
             fields: ['id_jestor', 'criado_em', 'reuniao_agendada', 'status', 'valor_da_proposta'],
-            limit: limit,
+            limit: batchSize,
             offset: offset,
-            sort: 'criado_em',
-            direction: 'desc'
+            sort: 'id_jestor',
+            direction: 'asc'
         };
 
         const response = await fetch(jestorUrl, {
@@ -64,37 +64,45 @@ serve(async (req) => {
         });
 
         if (!response.ok) {
-            console.error(`[Jestor Sync] API Error: ${response.status} - ${await response.text()}`);
+            const errorText = await response.text();
+            console.error(`[Jestor Sync] API Error: ${response.status} - ${errorText}`);
             throw new Error(`Jestor API Error: ${response.status}`);
         }
         
         const json = await response.json();
         let pageData: any[] = [];
         
-        // Jestor pode retornar data diretamente como array ou como {items: [...]}
+        // Jestor retorna dados de formas diferentes
         if (Array.isArray(json.data)) {
             pageData = json.data;
         } else if (json.data?.items && Array.isArray(json.data.items)) {
             pageData = json.data.items;
         } else if (json.items && Array.isArray(json.items)) {
             pageData = json.items;
+        } else if (Array.isArray(json)) {
+            pageData = json;
         }
 
-        console.log(`[Jestor Sync] Batch ${iterations} retornou ${pageData.length} registros`);
+        console.log(`[Jestor Sync] Batch ${iterations}: ${pageData.length} registros`);
 
-        if (pageData.length > 0) {
-            allLeads = [...allLeads, ...pageData];
-            offset += pageData.length;
-            // Se vier menos que o limite, chegamos ao fim
-            if (pageData.length < limit) {
-                hasMore = false;
-            }
-        } else {
-            hasMore = false;
+        // Se não veio nenhum registro, paramos
+        if (pageData.length === 0) {
+            console.log('[Jestor Sync] Nenhum registro retornado, finalizando paginação.');
+            break;
+        }
+
+        allLeads = [...allLeads, ...pageData];
+        offset += pageData.length;
+        lastBatchSize = pageData.length;
+
+        // Se veio menos que pedimos (ou menos que 20 que é o limite real do Jestor), paramos
+        if (pageData.length < 20) {
+            console.log(`[Jestor Sync] Último batch (${pageData.length} < 20), finalizando.`);
+            break;
         }
     }
 
-    console.log(`[Jestor Sync] Total de leads baixados: ${allLeads.length}`);
+    console.log(`[Jestor Sync] TOTAL FINAL: ${allLeads.length} leads em ${iterations} batches`);
 
     // --- 2. PROCESSAMENTO E AGREGAÇÃO (Lógica de Bucket Mensal) ---
     const monthlyStats: Record<string, any> = {};

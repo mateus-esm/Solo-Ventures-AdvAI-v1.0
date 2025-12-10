@@ -178,7 +178,6 @@ const Billing = () => {
   };
 
   const initiatePlanUpgrade = (planoId: number) => {
-    // Assinaturas sempre pedem cartão para recorrência
     setPendingAction({ type: 'upgrade_plan', payload: { planoId } });
     setCardDialogOpen(true); 
   };
@@ -216,7 +215,7 @@ const Billing = () => {
         },
         creditCardHolderInfo: {
             name: cardData.holderName,
-            email: "financeiro@cliente.com", // Idealmente viria do perfil
+            email: "financeiro@cliente.com",
             cpfCnpj: "00000000000",
             postalCode: "00000000",
             addressNumber: "0",
@@ -278,7 +277,6 @@ const Billing = () => {
                 Gerencie seu consumo e plano AdvAI
               </p>
             </div>
-            {/* BADGE DE STATUS DA ASSINATURA */}
             {statusAssinatura === 'active' ? (
               <Badge className="bg-green-500 hover:bg-green-600 h-8 px-3">
                 <CheckCircle2 className="w-4 h-4 mr-2"/> Regular

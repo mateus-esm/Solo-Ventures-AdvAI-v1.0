@@ -64,6 +64,7 @@ export type Database = {
           id: string
           jestor_api_token: string | null
           limite_creditos: number | null
+          next_due_date: string | null
           nome_cliente: string
           plano_id: number | null
           subscription_status: string | null
@@ -82,6 +83,7 @@ export type Database = {
           id?: string
           jestor_api_token?: string | null
           limite_creditos?: number | null
+          next_due_date?: string | null
           nome_cliente: string
           plano_id?: number | null
           subscription_status?: string | null
@@ -100,6 +102,7 @@ export type Database = {
           id?: string
           jestor_api_token?: string | null
           limite_creditos?: number | null
+          next_due_date?: string | null
           nome_cliente?: string
           plano_id?: number | null
           subscription_status?: string | null
@@ -240,31 +243,43 @@ export type Database = {
       }
       transacoes: {
         Row: {
+          data_pagamento: string | null
           data_transacao: string | null
           descricao: string | null
           equipe_id: string
+          forma_pagamento: string | null
           gateway_id: string | null
           id: string
+          invoice_url: string | null
+          metadata: Json | null
           status: string | null
           tipo: string
           valor: number
         }
         Insert: {
+          data_pagamento?: string | null
           data_transacao?: string | null
           descricao?: string | null
           equipe_id: string
+          forma_pagamento?: string | null
           gateway_id?: string | null
           id?: string
+          invoice_url?: string | null
+          metadata?: Json | null
           status?: string | null
           tipo: string
           valor: number
         }
         Update: {
+          data_pagamento?: string | null
           data_transacao?: string | null
           descricao?: string | null
           equipe_id?: string
+          forma_pagamento?: string | null
           gateway_id?: string | null
           id?: string
+          invoice_url?: string | null
+          metadata?: Json | null
           status?: string | null
           tipo?: string
           valor?: number

@@ -1,5 +1,5 @@
-// Service Worker for AdvAI Portal PWA
-const CACHE_NAME = 'advai-portal-v22-fix-cache';
+// Service Worker for AdvAI Portal PWA - Aggressive Cache Clear
+const CACHE_NAME = 'advai-portal-v23-' + Date.now();
 const urlsToCache = [
   '/',
   '/index.html',
@@ -8,101 +8,77 @@ const urlsToCache = [
   '/solo-ventures-icon-512.png',
 ];
 
-// URLs que NÃO devem ser cacheadas (módulos Vite)
+// URLs que NUNCA devem ser cacheadas
 const shouldNotCache = (url) => {
-  return url.includes('/node_modules/.vite/') || 
+  return url.includes('/node_modules/') || 
+         url.includes('/.vite/') ||
          url.includes('/@vite/') ||
          url.includes('/@react-refresh') ||
-         url.includes('/__vite_ping');
+         url.includes('/__vite_ping') ||
+         url.includes('.js?v=') ||
+         url.includes('chunk-');
 };
 
-// Install event - cache resources
+// Install event - clear ALL caches and skip waiting
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing new service worker...');
+  console.log('[SW] Installing, clearing all caches...');
   event.waitUntil(
     caches.keys()
       .then((cacheNames) => {
-        // Delete ALL old caches immediately
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
-              console.log('[SW] Deleting old cache:', cacheName);
-              return caches.delete(cacheName);
-            }
+            console.log('[SW] Deleting cache:', cacheName);
+            return caches.delete(cacheName);
           })
         );
       })
       .then(() => caches.open(CACHE_NAME))
       .then((cache) => cache.addAll(urlsToCache))
-      .then(() => {
-        console.log('[SW] New service worker installed, skipping waiting...');
-        return self.skipWaiting();
-      })
+      .then(() => self.skipWaiting())
   );
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - network first for JS, cache for static assets only
 self.addEventListener('fetch', (event) => {
-  // NEVER cache Vite dev modules
-  if (shouldNotCache(event.request.url)) {
-    event.respondWith(fetch(event.request));
+  // NEVER cache JS modules
+  if (shouldNotCache(event.request.url) || event.request.url.endsWith('.js')) {
+    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
     return;
   }
 
+  // For static assets, try network first then cache
   event.respondWith(
-    caches.match(event.request)
+    fetch(event.request)
       .then((response) => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request).then((response) => {
-          // Don't cache non-successful responses
-          if (!response || response.status !== 200 || response.type === 'error') {
-            return response;
-          }
-          
-          // Don't cache Vite modules
-          if (shouldNotCache(event.request.url)) {
-            return response;
-          }
-          
-          // Clone the response
+        if (response && response.status === 200 && !shouldNotCache(event.request.url)) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache);
           });
-          return response;
-        });
+        }
+        return response;
       })
+      .catch(() => caches.match(event.request))
   );
 });
 
-// Activate event - clean up old caches
+// Activate event - immediately take control
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating new service worker...');
+  console.log('[SW] Activating, purging old caches...');
   event.waitUntil(
     caches.keys()
       .then((cacheNames) => {
         return Promise.all(
-          cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
-              console.log('[SW] Removing old cache:', cacheName);
-              return caches.delete(cacheName);
-            }
+          cacheNames.filter(name => name !== CACHE_NAME).map(name => {
+            console.log('[SW] Purging:', name);
+            return caches.delete(name);
           })
         );
       })
+      .then(() => self.clients.claim())
       .then(() => {
-        console.log('[SW] Taking control of all clients...');
-        return self.clients.claim();
-      })
-      .then(() => {
-        // Force refresh all clients
-        return self.clients.matchAll().then((clients) => {
-          clients.forEach((client) => {
-            console.log('[SW] Reloading client:', client.url);
-            client.postMessage({ type: 'CACHE_UPDATED' });
-          });
+        self.clients.matchAll().then((clients) => {
+          clients.forEach(client => client.postMessage({ type: 'CACHE_UPDATED' }));
         });
       })
   );

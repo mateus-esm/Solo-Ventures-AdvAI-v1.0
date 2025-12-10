@@ -9,10 +9,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Zap, Loader2, CheckCircle2, AlertTriangle, ExternalLink, ShieldCheck, X, History, FileText, Users } from "lucide-react";
+import { Zap, Loader2, CheckCircle2, AlertTriangle, ExternalLink, ShieldCheck, X, History, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
+// Interfaces
 interface CreditData {
   creditsSpent: number;
   creditsBalance: number;
@@ -39,7 +40,7 @@ interface HistoricoConsumo {
 }
 
 const Billing = () => {
-  const { user, signOut } = useAuth(); // Importa signOut
+  const { user, signOut } = useAuth();
   const [creditData, setCreditData] = useState<CreditData | null>(null);
   const [statusAssinatura, setStatusAssinatura] = useState<string>('active');
   const [transacoes, setTransacoes] = useState<Transacao[]>([]);
@@ -118,7 +119,6 @@ const Billing = () => {
         body: { month: m, year: y }
       });
       
-      // AUTO-LOGOUT SE SESSÃO EXPIRADA
       if (error && (error.code === 401 || error.message?.includes('Unauthorized'))) {
           toast({ title: "Sessão Expirada", description: "Reconectando...", variant: "destructive" });
           await signOut();
@@ -142,7 +142,6 @@ const Billing = () => {
       }
     } catch (e) {
       console.error(e);
-      // Não exibe toast de erro genérico para evitar spam visual se for auth
     } finally {
       setLoading(false);
       setFilterLoading(false);
@@ -161,6 +160,7 @@ const Billing = () => {
     }
   };
 
+  // --- NOVA FUNÇÃO DE REDIRECIONAMENTO COM FALLBACK ---
   const handleRedirectPayment = async (type: 'credits' | 'plan', value: number) => {
     const loadingKey = type === 'plan' ? value.toString() : 'credits';
     setProcessing(loadingKey);
@@ -189,14 +189,45 @@ const Billing = () => {
 
         const { data, error } = await supabase.functions.invoke(func, { body });
 
+        console.log('Resposta Asaas:', data, error);
+
         if (error || !data || !data.invoiceUrl) {
             throw new Error(data?.error || error?.message || "Erro ao gerar link. Tente novamente.");
         }
 
-        window.location.href = data.invoiceUrl;
+        // TENTA ABRIR EM NOVA ABA (Melhor para iframes)
+        const newWindow = window.open(data.invoiceUrl, '_blank');
+
+        // FALLBACK: Se o navegador bloqueou o popup
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+            toast({
+                title: "Link de pagamento gerado!",
+                description: (
+                    <div className="flex flex-col gap-2 mt-2">
+                        <span>Clique abaixo para pagar:</span>
+                        <Button 
+                            size="sm" 
+                            variant="secondary"
+                            onClick={() => window.open(data.invoiceUrl, '_blank')}
+                            className="w-full flex items-center gap-2"
+                        >
+                            <ExternalLink className="w-4 h-4" /> Abrir Pagamento Seguro
+                        </Button>
+                    </div>
+                ),
+                duration: 15000, // Fica 15s na tela
+            });
+        } else {
+            toast({ 
+                title: "Sucesso!", 
+                description: "A página de pagamento foi aberta em uma nova aba.",
+                className: "bg-green-50 border-green-200"
+            });
+        }
 
     } catch (error: any) {
         toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } finally {
         setProcessing(null);
     }
   };
@@ -366,7 +397,7 @@ const Billing = () => {
                                 disabled={!!processing}
                             >
                                 {processing === p.id.toString() ? <Loader2 className="animate-spin mr-2 w-4 h-4"/> : null}
-                                {processing === p.id.toString() ? 'Redirecionando...' : 'Assinar Agora'}
+                                {processing === p.id.toString() ? 'Processando...' : 'Assinar Agora'}
                             </Button>
                         </CardFooter>
                     </Card>

@@ -42,17 +42,18 @@ serve(async (req) => {
                 headers: { 'Content-Type': 'application/json', 'access_token': asaasApiKey },
                 body: JSON.stringify({ name: equipe.nome_cliente, email: profile.email, cpfCnpj: profile.cpf })
             });
-            customerId = (await createRes.json()).id;
+            const newCus = await createRes.json();
+            customerId = newCus.id;
         }
         await supabaseClient.from('equipes').update({ asaas_customer_id: customerId }).eq('id', equipe.id);
     }
 
-    // 2. Criar Assinatura (UNDEFINED = Cliente escolhe método)
+    // 2. Criar Assinatura (UNDEFINED = Cliente escolhe método na tela do Asaas)
     const subBody = {
         customer: customerId,
         billingType: 'UNDEFINED', 
         value: plano.preco_mensal,
-        nextDueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+        nextDueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Vence Amanhã
         cycle: 'MONTHLY',
         description: `Assinatura ${plano.nome}`,
         externalReference: `sub_${equipe.id}_${plano.id}`
@@ -66,13 +67,33 @@ serve(async (req) => {
     const subData = await subRes.json();
     if (!subData.id) throw new Error(JSON.stringify(subData));
 
-    // 3. Pegar link da primeira cobrança para redirecionar
-    const paymentsRes = await fetch(`${ASAAS_API_URL}/subscriptions/${subData.id}/payments?limit=1`, {
-        headers: { 'access_token': asaasApiKey }
-    });
-    const paymentsData = await paymentsRes.json();
-    const invoiceUrl = paymentsData.data?.[0]?.invoiceUrl;
+    // 3. Buscar a Primeira Cobrança com RETRY (Correção do Erro)
+    let invoiceUrl = null;
+    
+    // Tenta 5 vezes, esperando 1s entre cada tentativa
+    for (let i = 0; i < 5; i++) {
+        // Delay de 1 segundo
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        const paymentsRes = await fetch(`${ASAAS_API_URL}/subscriptions/${subData.id}/payments?limit=1`, {
+            headers: { 'access_token': asaasApiKey }
+        });
+        const paymentsData = await paymentsRes.json();
+        
+        if (paymentsData.data && paymentsData.data.length > 0) {
+            invoiceUrl = paymentsData.data[0].invoiceUrl;
+            break; // Achou! Sai do loop
+        }
+        console.log(`Tentativa ${i+1}: Cobrança ainda não gerada...`);
+    }
 
+    if (!invoiceUrl) {
+        // Fallback: Se não gerou link, mandamos para a lista de assinaturas (menos ideal, mas não trava)
+        // Mas geralmente em 5s o Asaas gera.
+        throw new Error("O Asaas está processando sua assinatura. Verifique seu email em instantes para o link de pagamento.");
+    }
+
+    // Atualiza equipe
     await supabaseClient.from('equipes').update({ 
         asaas_subscription_id: subData.id,
         subscription_status: 'pending_payment',

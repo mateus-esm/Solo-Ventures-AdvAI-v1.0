@@ -35,15 +35,22 @@ serve(async (req) => {
     const jestorUrl = 'https://mateussmaia.api.jestor.com/object/list';
     let allLeads: any[] = [];
     let offset = 0;
-    const batchSize = 50; // Jestor retorna ~20 por vez, mas pedimos mais para garantir
-    const maxIterations = 50; // Proteção: máximo 2500 leads
+    const batchSize = 20; // Jestor retorna ~20 por vez
+    const maxIterations = 100; // Proteção: máximo 2000 leads
     let iterations = 0;
-    let lastBatchSize = -1;
 
-    // --- 1. LOOP DE PAGINAÇÃO - CONTINUA ATÉ RECEBER 0 REGISTROS ---
+    // Helper para delay entre requests (evita 429)
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // --- 1. LOOP DE PAGINAÇÃO COM DELAY PARA EVITAR RATE LIMIT ---
     while (iterations < maxIterations) {
         iterations++;
         console.log(`[Jestor Sync] Batch ${iterations}, offset=${offset}...`);
+        
+        // Delay entre requests para evitar 429 (500ms)
+        if (iterations > 1) {
+            await delay(500);
+        }
         
         const bodyJestor = {
             object_type: 'o_apnte00i6bwtdfd2rjc',
@@ -56,9 +63,9 @@ serve(async (req) => {
 
         const response = await fetch(jestorUrl, {
             method: 'POST',
-            headers: { 
-                'Authorization': `Bearer ${equipe.jestor_api_token}`,
-                'Content-Type': 'application/json' 
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${equipe.jestor_api_token}`
             },
             body: JSON.stringify(bodyJestor)
         });
@@ -72,7 +79,6 @@ serve(async (req) => {
         const json = await response.json();
         let pageData: any[] = [];
         
-        // Jestor retorna dados de formas diferentes
         if (Array.isArray(json.data)) {
             pageData = json.data;
         } else if (json.data?.items && Array.isArray(json.data.items)) {
@@ -85,19 +91,17 @@ serve(async (req) => {
 
         console.log(`[Jestor Sync] Batch ${iterations}: ${pageData.length} registros`);
 
-        // Se não veio nenhum registro, paramos
         if (pageData.length === 0) {
-            console.log('[Jestor Sync] Nenhum registro retornado, finalizando paginação.');
+            console.log('[Jestor Sync] Nenhum registro, finalizando.');
             break;
         }
 
         allLeads = [...allLeads, ...pageData];
         offset += pageData.length;
-        lastBatchSize = pageData.length;
 
-        // Se veio menos que pedimos (ou menos que 20 que é o limite real do Jestor), paramos
-        if (pageData.length < 20) {
-            console.log(`[Jestor Sync] Último batch (${pageData.length} < 20), finalizando.`);
+        // Se veio menos que o batch size, é o último
+        if (pageData.length < batchSize) {
+            console.log(`[Jestor Sync] Último batch (${pageData.length} < ${batchSize}), finalizando.`);
             break;
         }
     }

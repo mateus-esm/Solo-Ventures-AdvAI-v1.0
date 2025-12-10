@@ -13,6 +13,8 @@ serve(async (req) => {
 
   try {
     const asaasApiKey = Deno.env.get('ASAAS_API_KEY');
+    if (!asaasApiKey) throw new Error('ASAAS_API_KEY not configured');
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -20,7 +22,9 @@ serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) throw new Error('No authorization header');
-    const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace('Bearer ', ''));
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user } } = await supabaseClient.auth.getUser(token);
+    
     if (!user) throw new Error('Unauthorized');
 
     const { amount, credits } = await req.json();
@@ -57,12 +61,12 @@ serve(async (req) => {
         metadata: { creditos: credits }
       }).select().single();
 
-    // 3. Cobrança
+    // 3. Cobrança UNDEFINED (Gera Link)
     const paymentBody = {
       customer: asaasCustomerId,
-      billingType: 'UNDEFINED', // Permite Pix/Cartão
+      billingType: 'UNDEFINED', 
       value: amount,
-      dueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      dueDate: new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0],
       description: `Recarga de ${credits} créditos AdvAI`,
       externalReference: `credits_${transacao.id}`
     };
@@ -75,6 +79,7 @@ serve(async (req) => {
 
     const paymentData = await paymentRes.json();
     
+    // VALIDACAO DO LINK
     if (!paymentData.invoiceUrl) {
         throw new Error("Erro Asaas: " + (paymentData.errors?.[0]?.description || "Link não gerado"));
     }

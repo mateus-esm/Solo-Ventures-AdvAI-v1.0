@@ -65,7 +65,7 @@ serve(async (req) => {
     console.log(`[Jestor] ${allLeads.length} leads baixados.`);
 
     // 3. Processamento (Agrupamento por Mês)
-    const statsPorMes = {};
+    const statsPorMes: Record<string, { leads: number; reunioes: number; vendas: number; valor: number }> = {};
 
     allLeads.forEach(lead => {
       // Data de criação define o mês (Coorte)
@@ -140,6 +140,6 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 });
+    return new Response(JSON.stringify({ error: (error as Error).message }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 });
   }
 });

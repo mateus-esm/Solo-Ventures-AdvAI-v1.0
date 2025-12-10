@@ -12,7 +12,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Zap, TrendingUp, Loader2, RefreshCcw, MessageCircle, CreditCard, QrCode, Copy, Users, History, FileText, CheckCircle2, Calendar } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Zap, TrendingUp, Loader2, RefreshCcw, MessageCircle, CreditCard, QrCode, Copy, Users, History, FileText, CheckCircle2, Calendar, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface CreditData {
@@ -41,6 +42,7 @@ interface Transacao {
   status: string;
   descricao: string;
   data_transacao: string;
+  data_pagamento?: string;
 }
 
 interface HistoricoConsumo {
@@ -57,11 +59,13 @@ const Billing = () => {
   const [processing, setProcessing] = useState(false);
   const [transacoes, setTransacoes] = useState<Transacao[]>([]);
   const [historicoConsumo, setHistoricoConsumo] = useState<HistoricoConsumo[]>([]);
+  const [statusAssinatura, setStatusAssinatura] = useState<string>('active');
   
   // Filtro de Data
   const currentDate = new Date();
   const [filterMonth, setFilterMonth] = useState<string>((currentDate.getMonth() + 1).toString());
   const [filterYear, setFilterYear] = useState<string>(currentDate.getFullYear().toString());
+  const [filterLoading, setFilterLoading] = useState(false);
 
   // Dialogs
   const [pixDialogOpen, setPixDialogOpen] = useState(false);
@@ -72,8 +76,6 @@ const Billing = () => {
 
   const { toast } = useToast();
 
-  const [filterLoading, setFilterLoading] = useState(false);
-
   const fetchCredits = async (month?: string, year?: string) => {
     try {
       setLoading(true);
@@ -82,7 +84,7 @@ const Billing = () => {
       const m = month || filterMonth;
       const y = year || filterYear;
 
-      // 1. Créditos (Passando data para API)
+      // 1. Créditos (Passando data para API para ver histórico correto)
       const { data: creditResponse, error: creditError } = await supabase.functions.invoke('fetch-gpt-credits', {
         body: { month: m, year: y }
       });
@@ -101,35 +103,48 @@ const Billing = () => {
         .single();
 
       if (profile?.equipe_id) {
+        // Busca status da assinatura junto com o plano
         const { data: equipe } = await supabase
           .from('equipes')
-          .select('plano_id, creditos_avulsos, planos(*)')
+          .select('plano_id, creditos_avulsos, planos(*), subscription_status')
           .eq('id', profile.equipe_id)
           .single();
 
-        if (equipe?.planos) {
-          setPlano(equipe.planos as unknown as Plano);
+        if (equipe) {
+          setStatusAssinatura(equipe.subscription_status || 'active');
+          
+          if (equipe.planos) {
+            setPlano(equipe.planos as unknown as Plano);
+          }
         }
 
-        // 3. Histórico
+        // 3. Histórico de Transações
         const { data: txData } = await supabase
           .from('transacoes')
           .select('*')
           .eq('equipe_id', profile.equipe_id)
-          .order('data_transacao', { ascending: false })
-          .limit(10);
+          .order('data_transacao', { ascending: false }) // Mais recentes primeiro
+          .limit(20);
+          
         if (txData) setTransacoes(txData);
 
+        // 4. Histórico de Consumo
         const { data: consData } = await supabase
           .from('consumo_creditos')
           .select('*')
           .eq('equipe_id', profile.equipe_id)
           .order('periodo', { ascending: false })
           .limit(12);
+          
         if (consData) setHistoricoConsumo(consData);
       }
     } catch (error: any) {
       console.error('Error fetching billing data:', error);
+      toast({
+        variant: "destructive",
+        title: "Erro de conexão",
+        description: "Não foi possível carregar os dados financeiros."
+      });
     } finally {
       setLoading(false);
       setFilterLoading(false);
@@ -146,7 +161,7 @@ const Billing = () => {
     }
   };
 
-  const handleRecharge = () => {
+  const handleRechargeWhatsApp = () => {
     const totalCost = (selectedCredits / 500) * 40;
     const message = `Gostaria de recarregar ${selectedCredits.toLocaleString()} créditos (R$ ${totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`;
     window.open(`https://wa.me/5585996487923?text=${encodeURIComponent(message)}`, '_blank');
@@ -163,6 +178,7 @@ const Billing = () => {
   };
 
   const initiatePlanUpgrade = (planoId: number) => {
+    // Assinaturas sempre pedem cartão para recorrência
     setPendingAction({ type: 'upgrade_plan', payload: { planoId } });
     setCardDialogOpen(true); 
   };
@@ -175,12 +191,14 @@ const Billing = () => {
         body: { amount: totalCost, paymentMethod: 'PIX', credits: action.payload.credits }
       });
       if (error) throw error;
+      
       if (data.pixQrCode) {
         setPixData({ qrCode: data.pixQrCode, copyPaste: data.pixCopyPaste });
         setPixDialogOpen(true);
+        toast({ title: "PIX Gerado", description: "Escaneie o QR Code para pagar." });
       }
     } catch (e: any) {
-      toast({ title: "Erro", description: e.message, variant: "destructive" });
+      toast({ title: "Erro", description: e.message || "Falha ao gerar PIX", variant: "destructive" });
     } finally {
       setProcessing(false);
     }
@@ -198,7 +216,7 @@ const Billing = () => {
         },
         creditCardHolderInfo: {
             name: cardData.holderName,
-            email: "financeiro@cliente.com", 
+            email: "financeiro@cliente.com", // Idealmente viria do perfil
             cpfCnpj: "00000000000",
             postalCode: "00000000",
             addressNumber: "0",
@@ -215,22 +233,25 @@ const Billing = () => {
     setProcessing(true);
     try {
       const token = await tokenizeCard();
+      
       if (pendingAction?.type === 'buy_credits') {
         const totalCost = (pendingAction.payload.credits / 500) * 40;
         await supabase.functions.invoke('asaas-buy-credits', {
           body: { amount: totalCost, paymentMethod: 'CREDIT_CARD', credits: pendingAction.payload.credits, creditCardToken: token }
         });
-        toast({ title: "Sucesso!", description: "Créditos comprados." });
-      } else if (pendingAction?.type === 'upgrade_plan') {
+        toast({ title: "Sucesso!", description: "Compra processada. Créditos serão liberados em breve." });
+      } 
+      else if (pendingAction?.type === 'upgrade_plan') {
         await supabase.functions.invoke('asaas-subscribe', {
           body: { plano_id: pendingAction.payload.planoId, creditCardToken: token }
         });
-        toast({ title: "Sucesso!", description: "Assinatura configurada." });
+        toast({ title: "Assinatura Ativa!", description: "Plano configurado com sucesso." });
       }
+
       setCardDialogOpen(false);
-      fetchCredits();
+      setTimeout(fetchCredits, 2000);
     } catch (error: any) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+      toast({ title: "Erro no Pagamento", description: error.message, variant: "destructive" });
     } finally {
       setProcessing(false);
       setPendingAction(null);
@@ -248,16 +269,56 @@ const Billing = () => {
     <div className="flex-1 flex flex-col">
       <div className="border-b border-border bg-header-bg">
         <div className="container mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-foreground">
-            Billing <span className="text-primary">&amp; Créditos</span>
-          </h1>
-          <p className="text-sm text-foreground/70 mt-1 font-medium">
-            Gerencie seu consumo e plano AdvAI
-          </p>
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">
+                Billing <span className="text-primary">&amp; Créditos</span>
+              </h1>
+              <p className="text-sm text-foreground/70 mt-1 font-medium">
+                Gerencie seu consumo e plano AdvAI
+              </p>
+            </div>
+            {/* BADGE DE STATUS DA ASSINATURA */}
+            {statusAssinatura === 'active' ? (
+              <Badge className="bg-green-500 hover:bg-green-600 h-8 px-3">
+                <CheckCircle2 className="w-4 h-4 mr-2"/> Regular
+              </Badge>
+            ) : (
+              <Badge variant="destructive" className="h-8 px-3">
+                <AlertTriangle className="w-4 h-4 mr-2"/> Pendente
+              </Badge>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="flex-1 container mx-auto px-4 py-6">
+        
+        {/* ALERTAS DE STATUS E CRÉDITOS */}
+        <div className="space-y-4 mb-6">
+          {statusAssinatura !== 'active' && (
+            <Alert variant="destructive" className="border-red-500 bg-red-50 dark:bg-red-900/20">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Pagamento Pendente</AlertTitle>
+              <AlertDescription>
+                Sua assinatura não foi renovada. Regularize o pagamento para evitar o bloqueio do Agente.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {creditData && creditData.creditsBalance <= 100 && (
+            <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              <AlertTitle className="text-yellow-800 dark:text-yellow-500">
+                Créditos Baixos ({creditData.creditsBalance})
+              </AlertTitle>
+              <AlertDescription className="text-yellow-700 dark:text-yellow-400">
+                Seu saldo está acabando. Recarregue agora para não interromper o atendimento.
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
             <TabsTrigger value="overview">Visão Geral</TabsTrigger>
@@ -293,7 +354,7 @@ const Billing = () => {
               </Card>
             )}
 
-            {/* SELETOR DE MÊS (Para conferir o consumo 788 vs 1108) */}
+            {/* SELETOR DE MÊS (Para conferir o consumo) */}
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <TrendingUp className="w-5 h-5"/>
@@ -334,7 +395,7 @@ const Billing = () => {
                 </CardHeader>
                 <CardContent><div className="text-2xl font-bold text-primary">{creditData?.creditsSpent || 0}</div></CardContent>
               </Card>
-              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Saldo Disponível</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">{creditData?.creditsBalance || 0}</div></CardContent></Card>
+              <Card><CardHeader className="pb-2"><CardTitle className="text-sm">Saldo Disponível</CardTitle></CardHeader><CardContent><div className={`text-2xl font-bold ${creditData?.creditsBalance && creditData.creditsBalance < 100 ? 'text-red-500' : 'text-green-600'}`}>{creditData?.creditsBalance || 0}</div></CardContent></Card>
             </div>
 
             {/* PROGRESSO */}
@@ -369,14 +430,14 @@ const Billing = () => {
                 <div className="border-t pt-4 flex justify-between items-center">
                   <div><span className="text-sm text-muted-foreground">Total</span><p className="text-2xl font-bold">R$ {((selectedCredits / 500) * 40).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleRecharge}><MessageCircle className="h-4 w-4 mr-2"/> WhatsApp</Button>
+                    <Button variant="outline" onClick={handleRechargeWhatsApp}><MessageCircle className="h-4 w-4 mr-2"/> WhatsApp</Button>
                     <Button onClick={initiatePurchase} disabled={processing}>{processing ? <Loader2 className="animate-spin" /> : 'Comprar Agora'}</Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* PLANOS - Tabela Comparativa Profissional */}
+            {/* PLANOS LISTA */}
             <div className="space-y-6 pt-8 border-t">
               <div className="text-center mb-8">
                 <h2 className="text-3xl font-bold tracking-tight">Escolha seu Plano</h2>
@@ -414,124 +475,48 @@ const Billing = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {/* Créditos */}
+                    {/* Linhas da Tabela de Planos */}
                     <TableRow>
-                      <TableCell className="font-medium pl-6">
-                        <div className="flex items-center gap-2">
-                          <Zap className="w-4 h-4 text-primary" />
-                          Créditos AdvAI por mês
-                        </div>
-                      </TableCell>
+                      <TableCell className="font-medium pl-6"><div className="flex items-center gap-2"><Zap className="w-4 h-4 text-primary"/> Créditos Mensais</div></TableCell>
                       <TableCell className="text-center font-semibold">1.000</TableCell>
                       <TableCell className="text-center font-semibold bg-primary/5">3.000</TableCell>
                       <TableCell className="text-center font-semibold">10.000</TableCell>
                     </TableRow>
                     
-                    {/* Usuários */}
                     <TableRow>
-                      <TableCell className="font-medium pl-6">
-                        <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4 text-primary" />
-                          Usuários inclusos
-                        </div>
-                      </TableCell>
+                      <TableCell className="font-medium pl-6"><div className="flex items-center gap-2"><Users className="w-4 h-4 text-primary"/> Usuários</div></TableCell>
                       <TableCell className="text-center">até 3</TableCell>
                       <TableCell className="text-center bg-primary/5">até 5</TableCell>
                       <TableCell className="text-center font-semibold text-primary">Ilimitado</TableCell>
                     </TableRow>
-                    
-                    {/* Setup Agente */}
+
                     <TableRow>
-                      <TableCell className="font-medium pl-6">Setup completo do Agente IA</TableCell>
-                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                      <TableCell className="text-center bg-primary/5"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
+                      <TableCell className="font-medium pl-6">Setup do Agente</TableCell>
+                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto"/></TableCell>
+                      <TableCell className="text-center bg-primary/5"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto"/></TableCell>
+                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto"/></TableCell>
                     </TableRow>
-                    
-                    {/* Central de Atendimento */}
+
                     <TableRow>
-                      <TableCell className="font-medium pl-6">Central de Atendimento (Chat IA)</TableCell>
-                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                      <TableCell className="text-center bg-primary/5"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                    </TableRow>
-                    
-                    {/* Dashboard KPIs */}
-                    <TableRow>
-                      <TableCell className="font-medium pl-6">Dashboard com KPIs em tempo real</TableCell>
+                      <TableCell className="font-medium pl-6">Dashboard KPIs</TableCell>
                       <TableCell className="text-center text-muted-foreground">—</TableCell>
-                      <TableCell className="text-center bg-primary/5"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
+                      <TableCell className="text-center bg-primary/5"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto"/></TableCell>
+                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto"/></TableCell>
                     </TableRow>
-                    
-                    {/* Pipeline Comercial */}
+
                     <TableRow>
-                      <TableCell className="font-medium pl-6">Pipeline Comercial (CRM integrado)</TableCell>
+                      <TableCell className="font-medium pl-6">Gestão Financeira</TableCell>
                       <TableCell className="text-center text-muted-foreground">—</TableCell>
-                      <TableCell className="text-center bg-primary/5"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
+                      <TableCell className="text-center bg-primary/5"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto"/></TableCell>
+                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto"/></TableCell>
                     </TableRow>
-                    
-                    {/* Gestão de Billing */}
-                    <TableRow>
-                      <TableCell className="font-medium pl-6">Gestão de Billing & Créditos</TableCell>
-                      <TableCell className="text-center text-muted-foreground">—</TableCell>
-                      <TableCell className="text-center bg-primary/5"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                    </TableRow>
-                    
-                    {/* Consultoria */}
-                    <TableRow>
-                      <TableCell className="font-medium pl-6">Consultoria mensal com especialista</TableCell>
-                      <TableCell className="text-center text-muted-foreground">—</TableCell>
-                      <TableCell className="text-center bg-primary/5 text-muted-foreground">—</TableCell>
-                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                    </TableRow>
-                    
-                    {/* API Integrações */}
-                    <TableRow>
-                      <TableCell className="font-medium pl-6">Integrações avançadas via API</TableCell>
-                      <TableCell className="text-center text-muted-foreground">—</TableCell>
-                      <TableCell className="text-center bg-primary/5 text-muted-foreground">—</TableCell>
-                      <TableCell className="text-center"><CheckCircle2 className="w-5 h-5 text-green-500 mx-auto" /></TableCell>
-                    </TableRow>
-                    
-                    {/* Suporte */}
-                    <TableRow>
-                      <TableCell className="font-medium pl-6">Nível de Suporte</TableCell>
-                      <TableCell className="text-center text-sm">WhatsApp</TableCell>
-                      <TableCell className="text-center bg-primary/5 text-sm font-medium">Prioritário (SLA 4h)</TableCell>
-                      <TableCell className="text-center text-sm font-semibold text-primary">Premium + SLA 99.5%</TableCell>
-                    </TableRow>
-                    
-                    {/* Builder Mode */}
-                    <TableRow>
-                      <TableCell className="font-medium pl-6">Suporte Builder Mode</TableCell>
-                      <TableCell className="text-center text-muted-foreground">—</TableCell>
-                      <TableCell className="text-center bg-primary/5">Incluso</TableCell>
-                      <TableCell className="text-center font-medium text-primary">Prioritário</TableCell>
-                    </TableRow>
-                    
-                    {/* Botões de Ação */}
+
+                    {/* Botões */}
                     <TableRow className="bg-muted/30 hover:bg-muted/30">
-                      <TableCell className="pl-6 py-6">
-                        <span className="text-sm text-muted-foreground">Selecione o plano ideal para você</span>
-                      </TableCell>
-                      <TableCell className="text-center py-6">
-                        <Button variant="outline" onClick={() => initiatePlanUpgrade(1)} className="w-full max-w-[140px]">
-                          Selecionar
-                        </Button>
-                      </TableCell>
-                      <TableCell className="text-center py-6 bg-primary/5">
-                        <Button onClick={() => initiatePlanUpgrade(2)} className="w-full max-w-[140px]">
-                          Selecionar
-                        </Button>
-                      </TableCell>
-                      <TableCell className="text-center py-6">
-                        <Button variant="outline" onClick={() => initiatePlanUpgrade(3)} className="w-full max-w-[140px]">
-                          Selecionar
-                        </Button>
-                      </TableCell>
+                      <TableCell className="pl-6 py-6"><span className="text-sm text-muted-foreground">Selecione o ideal</span></TableCell>
+                      <TableCell className="text-center py-6"><Button variant="outline" onClick={() => initiatePlanUpgrade(1)}>Selecionar</Button></TableCell>
+                      <TableCell className="text-center py-6 bg-primary/5"><Button onClick={() => initiatePlanUpgrade(2)}>Selecionar</Button></TableCell>
+                      <TableCell className="text-center py-6"><Button variant="outline" onClick={() => initiatePlanUpgrade(3)}>Selecionar</Button></TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -547,13 +532,14 @@ const Billing = () => {
                 <CardContent className="p-0">
                   {transacoes.length === 0 ? <div className="p-8 text-center text-muted-foreground">Sem transações.</div> : (
                     <Table>
-                      <TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Valor</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                      <TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Descrição</TableHead><TableHead>Valor</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
                       <TableBody>
                         {transacoes.map((t) => (
                           <TableRow key={t.id}>
-                            <TableCell>{new Date(t.data_transacao).toLocaleDateString()}</TableCell>
+                            <TableCell>{t.data_pagamento ? new Date(t.data_pagamento).toLocaleDateString() : new Date(t.data_transacao).toLocaleDateString()}</TableCell>
+                            <TableCell>{t.descricao || 'Transação'}</TableCell>
                             <TableCell>R$ {t.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
-                            <TableCell><Badge variant="outline">{t.status}</Badge></TableCell>
+                            <TableCell><Badge variant={t.status === 'pago' ? 'default' : 'secondary'}>{t.status}</Badge></TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -572,7 +558,7 @@ const Billing = () => {
                         {historicoConsumo.map((h) => (
                           <TableRow key={h.periodo}>
                             <TableCell className="font-medium">{h.periodo}</TableCell>
-                            <TableCell className="text-right">{h.creditos_utilizados}</TableCell>
+                            <TableCell className="text-right">{h.creditos_utilizados.toLocaleString()}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

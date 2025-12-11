@@ -89,13 +89,35 @@ serve(async (req) => {
       } 
       // Cenário: Assinatura
       else if (payment.subscription) {
-          const { data: equipe } = await supabaseClient.from('equipes').select('id').eq('asaas_customer_id', payment.customer).single();
+          const { data: equipe } = await supabaseClient.from('equipes').select('id, plano_id').eq('asaas_customer_id', payment.customer).single();
           if (equipe) {
               const nextDue = new Date(); nextDue.setMonth(nextDue.getMonth() + 1); nextDue.setDate(1); 
               
+              // Parsear plano_id do externalReference (formato: sub_equipeId_planoId)
+              let planoIdFromRef = equipe.plano_id;
+              if (externalRef && externalRef.startsWith('sub_')) {
+                  const parts = externalRef.split('_');
+                  if (parts.length >= 3) {
+                      planoIdFromRef = parseInt(parts[2]);
+                  }
+              }
+              
+              // Buscar limite de créditos do plano
+              let limiteCreditos = 1000; // default
+              if (planoIdFromRef) {
+                  const { data: plano } = await supabaseClient.from('planos').select('limite_creditos').eq('id', planoIdFromRef).single();
+                  if (plano) {
+                      limiteCreditos = plano.limite_creditos;
+                  }
+              }
+              
+              console.log(`[Webhook] Atualizando equipe ${equipe.id}: plano_id=${planoIdFromRef}, limite_creditos=${limiteCreditos}`);
+              
               await supabaseClient.from('equipes').update({ 
                   subscription_status: 'active', 
-                  next_due_date: nextDue.toISOString().split('T')[0] 
+                  next_due_date: nextDue.toISOString().split('T')[0],
+                  plano_id: planoIdFromRef,
+                  limite_creditos: limiteCreditos
               }).eq('id', equipe.id);
 
               await supabaseClient.from('transacoes').insert({

@@ -13,7 +13,7 @@ const CRM = () => {
             <p className="text-sm text-foreground/70 mt-1 font-medium">Gestão estratégica do seu funil de vendas</p>
           </div>
           <a 
-            href="https://mateussmaia.jestor.fun/object/o_apnte00i6bwtdfd2rjc" 
+            href="https://mateussmaia.jestor.fun/app/o5625fcplbm_f9w9331ry"
             target="_blank" 
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium border border-border bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 transition-colors"

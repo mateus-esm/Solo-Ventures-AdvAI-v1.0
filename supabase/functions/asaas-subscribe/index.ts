@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Content-Type': 'application/json', // Importante para o front entender o JSON
+  'Content-Type': 'application/json',
 };
 
 const ASAAS_API_URL = 'https://api.asaas.com/v3';
@@ -14,6 +14,8 @@ serve(async (req) => {
 
   try {
     const asaasApiKey = Deno.env.get('ASAAS_API_KEY');
+    if (!asaasApiKey) throw new Error('ASAAS_API_KEY não configurada');
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -55,9 +57,9 @@ serve(async (req) => {
     // 3. Criar Assinatura no Asaas
     const subBody = {
         customer: customerId,
-        billingType: 'UNDEFINED', // Permite escolha Pix/Cartão
+        billingType: 'UNDEFINED',
         value: plano.preco_mensal,
-        nextDueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Amanhã
+        nextDueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
         cycle: 'MONTHLY',
         description: `Assinatura ${plano.nome}`,
         externalReference: `sub_${equipe.id}_${plano.id}`
@@ -79,7 +81,7 @@ serve(async (req) => {
     console.log(`Assinatura ${subData.id} criada. Buscando cobrança...`);
 
     for (let i = 0; i < 30; i++) { 
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Espera 1s
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         const paymentsRes = await fetch(`${ASAAS_API_URL}/subscriptions/${subData.id}/payments?limit=1`, {
             headers: { 'access_token': asaasApiKey }
@@ -95,12 +97,12 @@ serve(async (req) => {
 
     if (!invoiceUrl) throw new Error("O Asaas demorou para gerar o link. Tente novamente.");
 
-    // 5. REGISTRAR TRANSAÇÃO NO HISTÓRICO (O QUE FALTAVA!)
+    // 5. REGISTRAR TRANSAÇÃO NO HISTÓRICO
     await supabaseClient.from('transacoes').insert({
         equipe_id: equipe.id,
         tipo: 'assinatura',
         valor: plano.preco_mensal,
-        status: 'pendente', // Fica pendente até o webhook confirmar
+        status: 'pendente',
         descricao: `Assinatura ${plano.nome}`,
         invoice_url: invoiceUrl,
         gateway_id: paymentId

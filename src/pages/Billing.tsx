@@ -77,7 +77,6 @@ const Billing = () => {
     else { setFilterYear(value); fetchCredits(filterMonth, value); }
   };
 
-  // --- LÓGICA DE REDIRECIONAMENTO COM TRATAMENTO DE ERRO MELHORADO ---
   const handleRedirectPayment = async (type: 'credits' | 'plan', value: number) => {
     const loadingKey = type === 'plan' ? value.toString() : 'credits';
     setProcessing(loadingKey);
@@ -103,27 +102,17 @@ const Billing = () => {
             func = 'asaas-subscribe';
         }
 
-        console.log(`Chamando função ${func}...`);
         const { data, error } = await supabase.functions.invoke(func, { body });
 
-        console.log("Resposta do Backend:", data);
-
-        if (error) {
-            throw new Error(`Erro na API: ${error.message}`);
-        }
-
-        if (!data || !data.invoiceUrl) {
-            // Se veio erro estruturado do backend
-            if (data?.error) throw new Error(data.error);
-            throw new Error("O link de pagamento não foi retornado pelo servidor.");
+        if (error || !data || !data.invoiceUrl) {
+            throw new Error(data?.error || error?.message || "Link de pagamento não encontrado.");
         }
 
         // REDIRECIONA
         window.location.href = data.invoiceUrl;
 
     } catch (error: any) {
-        console.error("Erro no checkout:", error);
-        toast({ title: "Não foi possível gerar o pagamento", description: error.message, variant: "destructive" });
+        toast({ title: "Erro no processamento", description: error.message, variant: "destructive" });
     } finally {
         setProcessing(null);
     }
@@ -133,7 +122,6 @@ const Billing = () => {
 
   return (
     <div className="flex-1 flex flex-col p-6 space-y-8">
-      {/* Header */}
       <div className="flex justify-between items-center border-b pb-4">
         <div><h1 className="text-3xl font-bold">Billing & Assinatura</h1><p className="text-muted-foreground">Gerencie seus pagamentos</p></div>
         <Badge variant={statusAssinatura === 'active' ? 'default' : 'destructive'} className="h-8 px-4">{statusAssinatura === 'active' ? 'Regular' : 'Pendente'}</Badge>
